@@ -13,4 +13,14 @@ export interface KnowledgeBase {
   createdAt: Date
 }
 
+export interface KBFile {
+  id: string
+  name: string
+  size: number
+  type: string
+  knowledgeBaseId: string
+  createdAt: Date
+  uploadedBy?: string
+}
+
 export type SidebarSection = 'rag' | 'chat'

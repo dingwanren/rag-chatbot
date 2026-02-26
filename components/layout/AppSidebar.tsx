@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Conversations } from '@ant-design/x'
-import { DeleteOutlined, EditOutlined, MoreOutlined, DatabaseOutlined, PlusOutlined } from '@ant-design/icons'
+import { Conversations, type ConversationsProps } from '@ant-design/x'
+import { DeleteOutlined, EditOutlined, DatabaseOutlined, PlusOutlined } from '@ant-design/icons'
 import { message, Modal } from 'antd'
 import { SidebarHeader } from './SidebarHeader'
 import { SidebarFooter } from './SidebarFooter'
@@ -16,6 +16,12 @@ const mockKnowledgeBases: KnowledgeBase[] = [
     description: '产品相关知识和资料',
     createdAt: new Date(),
   },
+  {
+    id: 'kb-2',
+    name: '技术手册',
+    description: '技术支持文档',
+    createdAt: new Date(),
+  },
 ]
 
 const mockChats: Chat[] = [
@@ -23,21 +29,13 @@ const mockChats: Chat[] = [
     id: 'chat-1',
     title: '新产品咨询',
     createdAt: new Date(),
-    mode: 'rag',
-    knowledgeBaseId: 'kb-1',
-  },
-  {
-    id: 'chat-2',
-    title: '技术支持对话',
-    createdAt: new Date(),
     mode: 'normal',
   },
   {
-    id: 'chat-3',
+    id: 'chat-2',
     title: '功能使用指南',
     createdAt: new Date(),
-    mode: 'rag',
-    knowledgeBaseId: 'kb-1',
+    mode: 'normal',
   },
 ]
 
@@ -46,7 +44,6 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ className }: AppSidebarProps) {
-  const [hasKnowledgeBase, setHasKnowledgeBase] = useState(true)
   const [chats, setChats] = useState<Chat[]>(mockChats)
   const [editingKey, setEditingKey] = useState<string | null>(null)
 
@@ -70,10 +67,9 @@ export function AppSidebar({ className }: AppSidebarProps) {
 
   const handleRenameChat = (key: string, currentTitle: string) => {
     setEditingKey(key)
-    // 实际项目中这里应该弹出一个输入框让用户输入新名称
     const newTitle = prompt('请输入新标题:', currentTitle)
     if (newTitle && newTitle.trim()) {
-      setChats(chats.map(chat => 
+      setChats(chats.map(chat =>
         chat.id === key ? { ...chat, title: newTitle } : chat
       ))
       message.success('已重命名会话')
@@ -83,23 +79,18 @@ export function AppSidebar({ className }: AppSidebarProps) {
 
   // 构建 Conversations items
   const items = [
-    // 知识库分组
-    {
-      type: 'divider' as const,
-    },
+    // RAG 模式分组 - 知识库列表
     ...mockKnowledgeBases.map((kb) => ({
-      key: kb.id,
+      key: `kb-${kb.id}`,
       label: (
         <a href={`/knowledge/${kb.id}`} className="block w-full">
+          <DatabaseOutlined style={{ marginRight: 8 }} />
           {kb.name}
         </a>
       ),
-      group: '知识库',
+      group: 'RAG 模式',
     })),
-    // 聊天分组
-    {
-      type: 'divider' as const,
-    },
+    // 普通聊天分组
     ...chats.map((chat) => ({
       key: chat.id,
       label: (
@@ -107,36 +98,44 @@ export function AppSidebar({ className }: AppSidebarProps) {
           {chat.title}
         </a>
       ),
-      group: chat.mode === 'rag' ? 'RAG 模式' : '普通模式',
+      group: '普通聊天',
     })),
   ]
 
-  // 会话操作菜单
-  const menu = {
-    items: [
-      {
-        key: 'edit',
-        label: '重命名',
-        icon: <EditOutlined />,
-        onClick: ({ domEvent, key }: { domEvent: React.MouseEvent; key: string }) => {
-          domEvent.stopPropagation()
-          const chat = chats.find(c => c.id === key)
-          if (chat) {
-            handleRenameChat(key, chat.title)
-          }
+  // 仅普通聊天有操作菜单，根据 group 字段判断
+  const menuConfig: ConversationsProps['menu'] = (conversation) => {
+    // RAG 模式分组不显示操作菜单
+    if (conversation.group === 'RAG 模式') {
+      return undefined;
+    }
+
+    // 普通聊天分组显示操作菜单
+    return {
+      items: [
+        {
+          key: 'edit',
+          label: '重命名',
+          icon: <EditOutlined />,
+          onClick: (info) => {
+            info.domEvent.stopPropagation()
+            const chat = chats.find(c => c.id === info.key)
+            if (chat) {
+              handleRenameChat(info.key, chat.title)
+            }
+          },
         },
-      },
-      {
-        key: 'delete',
-        label: '删除',
-        icon: <DeleteOutlined />,
-        danger: true,
-        onClick: ({ domEvent, key }: { domEvent: React.MouseEvent; key: string }) => {
-          domEvent.stopPropagation()
-          handleDeleteChat(key)
+        {
+          key: 'delete',
+          label: '删除',
+          icon: <DeleteOutlined />,
+          danger: true,
+          onClick: (info) => {
+            info.domEvent.stopPropagation()
+            handleDeleteChat(info.key)
+          },
         },
-      },
-    ],
+      ],
+    };
   }
 
   return (
@@ -152,7 +151,7 @@ export function AppSidebar({ className }: AppSidebarProps) {
             icon: <PlusOutlined />,
             onClick: handleNewChat,
           }}
-          menu={menu}
+          menu={menuConfig}
           groupable={{
             label: (group) => (
               <span className="text-xs font-medium text-sidebar-foreground px-2 py-1">

@@ -1,6 +1,6 @@
 'use client'
 
-import { Bubble, Sender, Prompts, type BubbleListProps } from '@ant-design/x'
+import { Bubble, Sender, type BubbleListProps } from '@ant-design/x'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useState, useMemo, useCallback, useSyncExternalStore } from 'react'
@@ -106,26 +106,7 @@ export function ChatArea({ chatId, chatTitle = 'New Chat' }: ChatAreaProps) {
           handleSendMessage(message)
           setInput('')
         }}
-        header={
-          <Sender.Header title="快捷提示">
-            <Prompts
-              items={[
-                { key: '1', description: '帮我总结一下这个文档' },
-                { key: '2', description: '这个文档的主要内容是什么？' },
-                { key: '3', description: '提取文档中的关键信息' },
-              ]}
-              onItemClick={({ data }) => {
-                setInput(data.description as string ?? '')
-              }}
-            />
-          </Sender.Header>
-        }
       />
-      {isLoading && (
-        <Flex justify="center" style={{ padding: '8px' }}>
-          <Spin size="small" description="AI 思考中..." />
-        </Flex>
-      )}
     </Flex>
   )
 }
