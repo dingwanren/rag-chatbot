@@ -11,10 +11,25 @@
       "sourceType": "github",
       "computedHash": "8e8d3042a04e6494e6d02b67eb9a97e76cdd63533c24ab507c9bf618a752e985"
     },
+    "ant-design-x": {
+      "source": "D:\\0-frontend-learn\\1-project-and-demo\\myself-project\\antx_skill\\ant-design-x",
+      "sourceType": "local",
+      "computedHash": "5c92d5b768d7ef53cb2049bcf35ae38aba1fb8be94a911a3fd025926d7b252a0"
+    },
+    "chrome-devtools": {
+      "source": "chromedevtools/chrome-devtools-mcp",
+      "sourceType": "github",
+      "computedHash": "9bf87c1640e0d5ff76bdaabeb9d66ae00f526e72f9a5c3a010062a4e7d31626e"
+    },
     "crafting-effective-readmes": {
       "source": "softaworks/agent-toolkit",
       "sourceType": "github",
       "computedHash": "c931a8c22160e8925400778fcb2266b5d1df762f3052edba65f72479f79f2d6c"
+    },
+    "enhance-prompt": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "computedHash": "71cc23e9ec5fc6361e12453495fa8c683f6cf26f3efaf9b230b0f43e0a32cc96"
     },
     "find-skills": {
       "source": "vercel-labs/skills",
@@ -31,10 +46,20 @@
       "sourceType": "github",
       "computedHash": "59fb01d2fad75636fbf99b505b7212490cc0e2a79a99bbf103a255c8e18904f1"
     },
+    "prompt-engineering-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "4ffe23560a80e45aec947fbd3e7c54a8c180bfa40985b81065f1e0e326af1e62"
+    },
     "shadcn-ui": {
       "source": "google-labs-code/stitch-skills",
       "sourceType": "github",
       "computedHash": "dadbca54d35a33fe73e40018611af2179689305bf6da812ab2643987fefd9da3"
+    },
+    "skill-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "9b03bb78ec5c81c4e0546dbb78cfc970368c72dcae5482e8c59690175abbc8e7"
     },
     "ui-ux-pro-max": {
       "source": "nextlevelbuilder/ui-ux-pro-max-skill",
