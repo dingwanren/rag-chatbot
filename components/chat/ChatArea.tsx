@@ -7,6 +7,7 @@ import { useState, useMemo, useCallback, useSyncExternalStore } from 'react'
 import { Flex, Avatar, Spin } from 'antd'
 import { UserOutlined, RobotOutlined } from '@ant-design/icons'
 import { ChatHeader } from './ChatHeader'
+import { MarkdownContent } from './MarkdownContent'
 
 interface ChatAreaProps {
   chatId?: string
@@ -64,12 +65,15 @@ export function ChatArea({ chatId, chatTitle = 'New Chat' }: ChatAreaProps) {
     ai: {
       typing: true,
       avatar: () => <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#1890ff' }} />,
+      contentRender: (content) => (
+        <MarkdownContent content={content} streaming={isLoading} />
+      ),
     },
     user: {
       placement: 'end',
       avatar: () => <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#52c41a' }} />,
     },
-  }), [])
+  }), [isLoading])
 
   const handleSendMessage = useCallback((message: string) => {
     sendMessage({ text: message })

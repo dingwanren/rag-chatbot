@@ -10,6 +10,7 @@ import { UserOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, EditOutlined
 import { FileList } from './FileList'
 import { UploadArea } from './UploadArea'
 import { KBFile, Chat } from '@/types'
+import { MarkdownContent } from '../chat/MarkdownContent'
 
 const { Title } = Typography
 
@@ -202,12 +203,15 @@ export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: Knowle
     ai: {
       typing: true,
       avatar: () => <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#1890ff' }} />,
+      contentRender: (content) => (
+        <MarkdownContent content={content} streaming={isLoading} />
+      ),
     },
     user: {
       placement: 'end',
       avatar: () => <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#52c41a' }} />,
     },
-  }), [])
+  }), [isLoading])
 
   const handleCreateNewChat = useCallback(() => {
     setSelectedChat(null)

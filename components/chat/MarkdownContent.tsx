@@ -1,0 +1,52 @@
+'use client'
+
+import XMarkdown from '@ant-design/x-markdown'
+import { CodeHighlighter } from '@ant-design/x'
+import type { ComponentProps } from '@ant-design/x-markdown'
+import React from 'react'
+
+// 引入 XMarkdown 主题样式
+import '@ant-design/x-markdown/themes/light.css'
+
+/**
+ * Code component for rendering code blocks with syntax highlighting
+ */
+const Code: React.FC<ComponentProps> = (props) => {
+  const { className, children } = props
+  const lang = className?.match(/language-(\w+)/)?.[1] || ''
+
+  if (typeof children !== 'string') return null
+
+  return <CodeHighlighter lang={lang}>{children}</CodeHighlighter>
+}
+
+interface MarkdownContentProps {
+  content: React.ReactNode
+  streaming?: boolean
+}
+
+/**
+ * Markdown content renderer with code highlighting support
+ */
+export function MarkdownContent({ content, streaming = false }: MarkdownContentProps) {
+  // Convert React.ReactNode to string
+  const contentString = typeof content === 'string' ? content : String(content ?? '')
+
+  return (
+    <div className="x-markdown-light">
+      <XMarkdown
+        content={contentString}
+        components={{ code: Code }}
+        paragraphTag="div"
+        streaming={
+          streaming
+            ? {
+                hasNextChunk: true,
+                enableAnimation: true,
+              }
+            : undefined
+        }
+      />
+    </div>
+  )
+}

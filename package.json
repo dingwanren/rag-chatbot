@@ -13,6 +13,7 @@
     "@ai-sdk/react": "^3.0.61",
     "@ant-design/icons": "^6.1.0",
     "@ant-design/x": "^2.2.2",
+    "@ant-design/x-markdown": "^2.2.2",
     "@langchain/community": "^1.1.9",
     "@langchain/core": "^1.1.17",
     "@langchain/textsplitters": "^1.0.1",
