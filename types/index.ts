@@ -11,7 +11,10 @@ export interface KnowledgeBase {
   name: string
   description?: string
   createdAt: Date
+  documentCount?: number
 }
+
+export type FileParseStatus = 'parsing' | 'success' | 'failed'
 
 export interface KBFile {
   id: string
@@ -21,6 +24,10 @@ export interface KBFile {
   knowledgeBaseId: string
   createdAt: Date
   uploadedBy?: string
+  status?: FileParseStatus
+  errorMessage?: string
 }
 
-export type SidebarSection = 'rag' | 'chat'
+export type SidebarSection = 'rag' | 'chat' | 'knowledge'
+
+export type MainView = 'chat' | 'knowledge'

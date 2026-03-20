@@ -16,6 +16,11 @@
       "sourceType": "local",
       "computedHash": "5c92d5b768d7ef53cb2049bcf35ae38aba1fb8be94a911a3fd025926d7b252a0"
     },
+    "bug-fix-doc": {
+      "source": "dingwanren/my_awesome_skills",
+      "sourceType": "github",
+      "computedHash": "535c9dca55d0b19d1fbe538cf976e897b395a958d8f572954c46d855f74185be"
+    },
     "chrome-devtools": {
       "source": "chromedevtools/chrome-devtools-mcp",
       "sourceType": "github",

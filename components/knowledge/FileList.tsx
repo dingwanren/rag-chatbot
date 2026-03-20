@@ -1,17 +1,36 @@
 'use client'
 
-import { Flex, Typography, Dropdown, message, Modal } from 'antd'
-import { FileTextOutlined, DeleteOutlined, MoreOutlined } from '@ant-design/icons'
-import { KBFile } from '@/types'
+import { Flex, Typography, Dropdown, message, Modal, Tag } from 'antd'
+import { FileTextOutlined, DeleteOutlined, MoreOutlined, SyncOutlined } from '@ant-design/icons'
+import { KBFile, FileParseStatus } from '@/types'
 
 const { Text } = Typography
 
 interface FileListProps {
   files: KBFile[]
   onDelete?: (fileId: string) => void
+  onRetry?: (fileId: string) => void
 }
 
-export function FileList({ files, onDelete }: FileListProps) {
+const statusConfig: Record<FileParseStatus, { color: string; icon: React.ReactNode; text: string }> = {
+  parsing: {
+    color: 'blue',
+    icon: <SyncOutlined spin />,
+    text: '解析中',
+  },
+  success: {
+    color: 'green',
+    icon: null,
+    text: '成功',
+  },
+  failed: {
+    color: 'red',
+    icon: null,
+    text: '失败',
+  },
+}
+
+export function FileList({ files, onDelete, onRetry }: FileListProps) {
   const handleDelete = (fileId: string, fileName: string) => {
     Modal.confirm({
       title: '确认删除？',
@@ -25,6 +44,14 @@ export function FileList({ files, onDelete }: FileListProps) {
     })
   }
 
+  const handleRetry = (fileId: string) => {
+    onRetry?.(fileId)
+    message.loading({ content: '重新解析中...', key: 'retry', duration: 1.5 })
+    setTimeout(() => {
+      message.success({ content: '已重新提交解析', key: 'retry', duration: 2 })
+    }, 1500)
+  }
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B'
     const k = 1024
@@ -32,17 +59,6 @@ export function FileList({ files, onDelete }: FileListProps) {
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
-
-  const menuItems = files.map(file => ({
-    key: file.id,
-    label: '删除',
-    icon: <DeleteOutlined />,
-    danger: true,
-    onClick: ({ domEvent }: { domEvent: React.MouseEvent }) => {
-      domEvent.stopPropagation()
-      handleDelete(file.id, file.name)
-    },
-  }))
 
   if (files.length === 0) {
     return (
@@ -62,45 +78,72 @@ export function FileList({ files, onDelete }: FileListProps) {
 
   return (
     <div style={{ padding: 16, overflowY: 'auto' }}>
-      {files.map((file) => (
-        <div
-          key={file.id}
-          style={{
-            padding: '12px 16px',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            transition: 'background-color 0.2s',
-            cursor: 'pointer',
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          <FileTextOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ display: 'block', marginBottom: 4 }}>{file.name}</Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {formatFileSize(file.size)}
-            </Text>
+      {files.map((file) => {
+        const status = file.status || 'parsing'
+        const config = statusConfig[status]
+
+        return (
+          <div
+            key={file.id}
+            style={{
+              padding: '12px 16px',
+              borderRadius: 8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              transition: 'background-color 0.2s',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <FileTextOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>{file.name}</Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {formatFileSize(file.size)}
+                </Text>
+                <Tag icon={config.icon} color={config.color} style={{ margin: 0, fontSize: 12 }}>
+                  {config.text}
+                </Tag>
+              </div>
+            </div>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'retry',
+                    label: '重试',
+                    icon: <SyncOutlined />,
+                    onClick: ({ domEvent }: { domEvent: React.MouseEvent }) => {
+                      domEvent.stopPropagation()
+                      handleRetry(file.id)
+                    },
+                    disabled: file.status !== 'failed',
+                  },
+                  {
+                    key: 'delete',
+                    label: '删除',
+                    icon: <DeleteOutlined />,
+                    danger: true,
+                    onClick: ({ domEvent }: { domEvent: React.MouseEvent }) => {
+                      domEvent.stopPropagation()
+                      handleDelete(file.id, file.name)
+                    },
+                  },
+                ],
+              }}
+              trigger={['click']}
+            >
+              <MoreOutlined
+                onClick={(e) => e.stopPropagation()}
+                style={{ cursor: 'pointer', padding: 4 }}
+              />
+            </Dropdown>
           </div>
-          <Dropdown menu={{ items: [{
-            key: 'delete',
-            label: '删除',
-            icon: <DeleteOutlined />,
-            danger: true,
-            onClick: ({ domEvent }: { domEvent: React.MouseEvent }) => {
-              domEvent.stopPropagation()
-              handleDelete(file.id, file.name)
-            },
-          }] }} trigger={['click']}>
-            <MoreOutlined
-              onClick={(e) => e.stopPropagation()}
-              style={{ cursor: 'pointer', padding: 4 }}
-            />
-          </Dropdown>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
