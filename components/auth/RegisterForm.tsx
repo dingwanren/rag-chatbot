@@ -1,84 +1,93 @@
 "use client";
 
-import { useState } from "react";
+import { signup } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { mockRegister } from "@/lib/mock-auth";
-import type { RegisterCredentials } from "@/lib/auth-types";
+import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 
 interface RegisterFormProps {
-  onSuccess: () => void;
+  onSuccess?: () => void;
 }
 
 export function RegisterForm({ onSuccess }: RegisterFormProps) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  
+  const [state, formAction] = useActionState<
+    { success: boolean; error?: string } | null,
+    FormData
+  >(async (prevState, formData) => {
+    const password = formData.get('password') as string;
+    const confirmPassword = formData.get('confirmPassword') as string;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      await mockRegister({ username, password, confirmPassword } as RegisterCredentials);
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
-    } finally {
-      setLoading(false);
+    // 客户端密码匹配验证
+    if (password !== confirmPassword) {
+      return { success: false, error: 'Passwords do not match' };
     }
-  };
+
+    // 验证密码长度
+    if (password.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters' };
+    }
+
+    const result = await signup(formData);
+
+    if (result.success) {
+      onSuccess?.();
+      router.push("/");
+      router.refresh();
+      return null;
+    }
+
+    return { success: false, error: result.error };
+  }, null);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form action={formAction} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="register-username">Username</Label>
+        <Label htmlFor="email">Email</Label>
         <Input
-          id="register-username"
-          type="text"
-          placeholder="Choose a username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={loading}
+          id="email"
+          type="email"
+          placeholder="Enter your email"
+          name="email"
+          autoComplete="email"
           required
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="register-password">Password</Label>
+        <Label htmlFor="password">Password</Label>
         <Input
-          id="register-password"
+          id="password"
           type="password"
           placeholder="Choose a password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
+          name="password"
+          autoComplete="new-password"
           required
+          minLength={6}
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="register-confirm-password">Confirm Password</Label>
+        <Label htmlFor="confirmPassword">Confirm Password</Label>
         <Input
-          id="register-confirm-password"
+          id="confirmPassword"
           type="password"
           placeholder="Confirm your password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          disabled={loading}
+          name="confirmPassword"
+          autoComplete="new-password"
           required
+          minLength={6}
         />
       </div>
-      {error && (
+      {state?.error && (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       )}
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Creating account..." : "Register"}
+      <Button type="submit" className="w-full">
+        Register
       </Button>
     </form>
   );

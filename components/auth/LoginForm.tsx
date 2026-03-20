@@ -1,71 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { login } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { mockLogin } from "@/lib/mock-auth";
-import type { LoginCredentials } from "@/lib/auth-types";
+import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 
 interface LoginFormProps {
-  onSuccess: () => void;
+  onSuccess?: () => void;
 }
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      await mockLogin({ username, password } as LoginCredentials);
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setLoading(false);
+  const router = useRouter();
+  
+  const [state, formAction] = useActionState<
+    { success: boolean; error?: string } | null,
+    FormData
+  >(async (prevState, formData) => {
+    const result = await login(formData);
+    
+    if (result.success) {
+      onSuccess?.();
+      router.push("/");
+      router.refresh();
+      return null;
     }
-  };
+    
+    return { success: false, error: result.error };
+  }, null);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form action={formAction} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="login-username">Username</Label>
+        <Label htmlFor="email">Email</Label>
         <Input
-          id="login-username"
-          type="text"
-          placeholder="Enter your username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          disabled={loading}
+          id="email"
+          type="email"
+          placeholder="Enter your email"
+          name="email"
+          autoComplete="email"
           required
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="login-password">Password</Label>
+        <Label htmlFor="password">Password</Label>
         <Input
-          id="login-password"
+          id="password"
           type="password"
           placeholder="Enter your password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
+          name="password"
+          autoComplete="current-password"
           required
         />
       </div>
-      {error && (
+      {state?.error && (
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{state.error}</AlertDescription>
         </Alert>
       )}
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Logging in..." : "Login"}
+      <Button type="submit" className="w-full">
+        Login
       </Button>
     </form>
   );

@@ -11,20 +11,7 @@ import {
 import { LoginForm } from "./LoginForm";
 import { RegisterForm } from "./RegisterForm";
 
-interface AuthPageProps {
-  onAuthSuccess?: () => void;
-}
-
-export function AuthPage({ onAuthSuccess }: AuthPageProps) {
-  const handleSuccess = () => {
-    if (onAuthSuccess) {
-      onAuthSuccess();
-    } else {
-      // Default: redirect to home
-      window.location.href = "/";
-    }
-  };
-
+export function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -43,10 +30,10 @@ export function AuthPage({ onAuthSuccess }: AuthPageProps) {
               <TabsTrigger value="register">Register</TabsTrigger>
             </TabsList>
             <TabsContent value="login" className="mt-6">
-              <LoginForm onSuccess={handleSuccess} />
+              <LoginForm />
             </TabsContent>
             <TabsContent value="register" className="mt-6">
-              <RegisterForm onSuccess={handleSuccess} />
+              <RegisterForm />
             </TabsContent>
           </Tabs>
         </CardContent>
