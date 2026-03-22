@@ -81,23 +81,23 @@ export function ChatArea({ chatId, chatTitle = 'New Chat' }: ChatAreaProps) {
 
   if (!isMounted) {
     return (
-      <Flex vertical style={{ height: '100vh' }}>
+      <div className="flex flex-col h-full">
         <ChatHeader title={chatTitle} />
-        <Flex justify="center" align="center" style={{ flex: 1 }}>
+        <div className="flex-1 flex justify-center items-center">
           <Spin size="large" description="加载中..." />
-        </Flex>
-      </Flex>
+        </div>
+      </div>
     )
   }
 
   return (
-    <Flex vertical style={{ height: '100vh' }}>
+    <div className="flex flex-col h-full">
       <ChatHeader title={chatTitle} />
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div className="flex flex-1 min-h-0">
         <Bubble.List
           role={memoRole}
           items={bubbleItems}
-          style={{ flex: 1, overflowY: 'auto' }}
+          className="flex-1 overflow-y-auto"
           autoScroll
         />
       </div>
@@ -111,6 +111,6 @@ export function ChatArea({ chatId, chatTitle = 'New Chat' }: ChatAreaProps) {
           setInput('')
         }}
       />
-    </Flex>
+    </div>
   )
 }

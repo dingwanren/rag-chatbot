@@ -3,7 +3,7 @@
 import XMarkdown from '@ant-design/x-markdown'
 import { CodeHighlighter } from '@ant-design/x'
 import type { ComponentProps } from '@ant-design/x-markdown'
-import React from 'react'
+import { useMemo, useCallback } from 'react'
 
 // 引入 XMarkdown 主题样式
 import '@ant-design/x-markdown/themes/light.css'
@@ -11,8 +11,7 @@ import '@ant-design/x-markdown/themes/light.css'
 /**
  * Code component for rendering code blocks with syntax highlighting
  */
-const Code: React.FC<ComponentProps> = (props) => {
-  const { className, children } = props
+function CodeComponent({ className, children }: ComponentProps) {
   const lang = className?.match(/language-(\w+)/)?.[1] || ''
 
   if (typeof children !== 'string') return null
@@ -32,11 +31,14 @@ export function MarkdownContent({ content, streaming = false }: MarkdownContentP
   // Convert React.ReactNode to string
   const contentString = typeof content === 'string' ? content : String(content ?? '')
 
+  // Memoize the components object to prevent infinite re-renders
+  const components = useMemo(() => ({ code: CodeComponent }), [])
+
   return (
     <div className="x-markdown-light">
       <XMarkdown
         content={contentString}
-        components={{ code: Code }}
+        components={components}
         paragraphTag="div"
         streaming={
           streaming

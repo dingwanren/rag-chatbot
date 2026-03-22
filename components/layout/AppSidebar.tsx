@@ -68,16 +68,7 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null)
 
   const handleNewChat = useCallback(() => {
-    const newChatId = `chat-${Date.now()}`
-    const newChat: Chat = {
-      id: newChatId,
-      title: '新对话',
-      createdAt: new Date(),
-      mode: 'normal',
-    }
-    setChats(prev => [newChat, ...prev])
-    router.push(`/chat/${newChatId}`)
-    message.success('已创建新对话')
+    router.push('/')
   }, [router])
 
   const handleNavigateToKnowledge = useCallback(() => {
@@ -101,7 +92,7 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
     setEditingKey(key)
     const newTitle = prompt('请输入新标题:', currentTitle)
     if (newTitle && newTitle.trim()) {
-      setChats(chats.map(chat =>
+      setChats(prevChats => prevChats.map(chat =>
         chat.id === key ? { ...chat, title: newTitle } : chat
       ))
       message.success('已重命名会话')
@@ -109,7 +100,7 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
     setEditingKey(null)
   }, [])
 
-  // 构建 Conversations items
+  // 构建 Conversations items - 使用 onClick + router.push 替代 <a> 标签
   const items: ConversationsProps['items'] = [
     // 知识库管理入口
     {
@@ -129,10 +120,16 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
     ...mockKnowledgeBases.map((kb) => ({
       key: `kb-${kb.id}`,
       label: (
-        <a href={`/knowledge/${kb.id}`} className="block w-full">
+        <div
+          onClick={(e) => {
+            e.preventDefault()
+            router.push(`/knowledge/${kb.id}`)
+          }}
+          className="flex items-center w-full cursor-pointer"
+        >
           <DatabaseOutlined style={{ marginRight: 8 }} />
           {kb.name}
-        </a>
+        </div>
       ),
       group: 'RAG 模式',
     })),
@@ -140,10 +137,16 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
     ...chats.map((chat) => ({
       key: chat.id,
       label: (
-        <a href={`/chat/${chat.id}`} className="block w-full">
+        <div
+          onClick={(e) => {
+            e.preventDefault()
+            router.push(`/chat/${chat.id}`)
+          }}
+          className="flex items-center w-full cursor-pointer"
+        >
           <MessageOutlined style={{ marginRight: 8 }} />
           {chat.title}
-        </a>
+        </div>
       ),
       group: '普通聊天',
     })),
