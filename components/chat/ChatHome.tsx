@@ -1,14 +1,18 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Bubble, Sender, type BubbleListProps } from '@ant-design/x'
 import { Flex, Avatar, Typography } from 'antd'
 import { UserOutlined, RobotOutlined, MessageOutlined } from '@ant-design/icons'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
+import { useCreateChat } from '@/hooks/useChat'
 
 const { Title, Text } = Typography
 
 export function ChatHome() {
+  const router = useRouter()
+  const { createChat, isPending: isCreating } = useCreateChat()
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
 
@@ -26,10 +30,25 @@ export function ChatHome() {
     },
   }
 
-  const handleSendMessage = useCallback((message: string) => {
-    // TODO: 实现发送消息逻辑，创建新聊天并跳转 URL
-    console.log('发送消息:', message)
-  }, [])
+  const handleSendMessage = useCallback(async (message: string) => {
+    if (!message.trim()) return
+
+    setIsSending(true)
+
+    try {
+      // 1. 创建新聊天
+      const { id: chatId } = await createChat({ title: '新对话' })
+
+      // 2. 将消息存储到 sessionStorage（用于传递到聊天页面）
+      sessionStorage.setItem(`chat-${chatId}-pending`, message)
+
+      // 3. 跳转到聊天详情页
+      router.push(`/chat/${chatId}`)
+    } catch (error) {
+      console.error('Create chat error:', error)
+      setIsSending(false)
+    }
+  }, [createChat, router])
 
   return (
     <div className="flex flex-col h-full">
@@ -49,7 +68,7 @@ export function ChatHome() {
         placeholder="输入消息..."
         value={input}
         onChange={setInput}
-        loading={isSending}
+        loading={isSending || isCreating}
         onSubmit={(message) => {
           handleSendMessage(message)
           setInput('')
