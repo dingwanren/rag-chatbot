@@ -19,52 +19,7 @@ const { Title, Text } = Typography
 interface KnowledgeDetailViewProps {
   knowledgeBaseId: string
   knowledgeBaseName: string
-  files?: KBFile[]
-  onUpload?: (files: File[]) => void
-  onDeleteFile?: (fileId: string) => void
-  onRetryParse?: (fileId: string) => void
 }
-
-// Mock data
-const mockFiles: KBFile[] = [
-  {
-    id: 'file-1',
-    name: '产品手册.pdf',
-    size: 1024 * 1024 * 2,
-    type: 'application/pdf',
-    knowledgeBaseId: 'kb-1',
-    createdAt: new Date(Date.now() - 86400000 * 2),
-    status: 'success',
-  },
-  {
-    id: 'file-2',
-    name: '技术文档.docx',
-    size: 1024 * 500,
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    knowledgeBaseId: 'kb-1',
-    createdAt: new Date(Date.now() - 86400000),
-    status: 'parsing',
-  },
-  {
-    id: 'file-3',
-    name: '错误日志.txt',
-    size: 1024 * 100,
-    type: 'text/plain',
-    knowledgeBaseId: 'kb-1',
-    createdAt: new Date(),
-    status: 'failed',
-    errorMessage: '文件格式解析失败',
-  },
-  {
-    id: 'file-4',
-    name: '用户指南.md',
-    size: 1024 * 300,
-    type: 'text/markdown',
-    knowledgeBaseId: 'kb-1',
-    createdAt: new Date(Date.now() - 3600000),
-    status: 'success',
-  },
-]
 
 const statusConfig: Record<FileParseStatus, { color: string; icon: React.ReactNode; text: string }> = {
   parsing: {
@@ -87,11 +42,8 @@ const statusConfig: Record<FileParseStatus, { color: string; icon: React.ReactNo
 export function KnowledgeDetailView({
   knowledgeBaseId,
   knowledgeBaseName,
-  files = mockFiles,
-  onUpload,
-  onDeleteFile,
-  onRetryParse,
 }: KnowledgeDetailViewProps) {
+  const [files, setFiles] = useState<KBFile[]>([])
   const [activeTab, setActiveTab] = useState<'files' | 'settings'>('files')
   const [uploading, setUploading] = useState(false)
 
@@ -102,19 +54,20 @@ export function KnowledgeDetailView({
       okText: '确认',
       cancelText: '取消',
       onOk: () => {
-        onDeleteFile?.(fileId)
+        setFiles(prev => prev.filter(f => f.id !== fileId))
         message.success('已删除文件')
       },
     })
-  }, [onDeleteFile])
+  }, [])
 
   const handleRetryParse = useCallback((fileId: string) => {
-    onRetryParse?.(fileId)
+    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'parsing' as const } : f))
     message.loading({ content: '重新解析中...', key: 'retry', duration: 1.5 })
     setTimeout(() => {
       message.success({ content: '已重新提交解析', key: 'retry', duration: 2 })
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'success' as const } : f))
     }, 1500)
-  }, [onRetryParse])
+  }, [])
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B'
@@ -137,12 +90,22 @@ export function KnowledgeDetailView({
 
   const handleCustomUpload: UploadProps['customRequest'] = ({ file, onSuccess, onError }) => {
     setUploading(true)
+    const fileObj = file as File
     // Mock upload
     setTimeout(() => {
       setUploading(false)
       if (onSuccess) onSuccess('ok')
-      message.success(`${(file as File).name} 上传成功`)
-      onUpload?.([file as File])
+      message.success(`${fileObj.name} 上传成功`)
+      const newFile: KBFile = {
+        id: `file-${Date.now()}`,
+        name: fileObj.name,
+        size: fileObj.size,
+        type: fileObj.type,
+        knowledgeBaseId,
+        createdAt: new Date(),
+        status: 'success',
+      }
+      setFiles(prev => [...prev, newFile])
     }, 1500)
   }
 

@@ -95,27 +95,24 @@ export interface Database {
           user_id: string
           name: string
           description: string | null
-          document_count: number
           created_at: string
-          updated_at: string
+          status?: string | null
         }
         Insert: {
           id?: string
           user_id: string
           name: string
           description?: string | null
-          document_count?: number
           created_at?: string
-          updated_at?: string
+          status?: string | null
         }
         Update: {
           id?: string
           user_id?: string
           name?: string
           description?: string | null
-          document_count?: number
           created_at?: string
-          updated_at?: string
+          status?: string | null
         }
         Relationships: []
       }
