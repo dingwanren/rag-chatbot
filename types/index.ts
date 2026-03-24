@@ -14,18 +14,17 @@ export interface KnowledgeBase {
   documentCount?: number
 }
 
-export type FileParseStatus = 'parsing' | 'success' | 'failed'
+export type FileStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
-export interface KBFile {
+export interface KnowledgeFile {
   id: string
-  name: string
-  size: number
-  type: string
-  knowledgeBaseId: string
-  createdAt: Date
-  uploadedBy?: string
-  status?: FileParseStatus
-  errorMessage?: string
+  knowledge_base_id: string
+  file_name: string
+  file_url: string
+  file_path: string
+  file_size: number
+  status: string
+  created_at: string
 }
 
 export type SidebarSection = 'rag' | 'chat' | 'knowledge'

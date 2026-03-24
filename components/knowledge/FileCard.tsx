@@ -9,20 +9,25 @@ import {
   RightOutlined,
   DownOutlined,
 } from '@ant-design/icons'
-import { KBFile, FileParseStatus } from '@/types'
+import { KnowledgeFile, FileStatus } from '@/types'
 
 const { Title, Text } = Typography
 
-const statusConfig: Record<FileParseStatus, { color: string; icon: React.ReactNode; text: string }> = {
-  parsing: {
+const statusConfig: Record<FileStatus, { color: string; icon: React.ReactNode; text: string }> = {
+  pending: {
+    color: 'yellow',
+    icon: null,
+    text: '待处理',
+  },
+  processing: {
     color: 'blue',
     icon: <SyncOutlined spin />,
-    text: '解析中',
+    text: '处理中',
   },
-  success: {
+  completed: {
     color: 'green',
     icon: null,
-    text: '成功',
+    text: '完成',
   },
   failed: {
     color: 'red',
@@ -32,7 +37,7 @@ const statusConfig: Record<FileParseStatus, { color: string; icon: React.ReactNo
 }
 
 interface FileCardProps {
-  file: KBFile
+  file: KnowledgeFile
   onDelete?: () => void
   onRetry?: () => void
 }
@@ -48,8 +53,8 @@ export function FileCard({ file, onDelete, onRetry }: FileCardProps) {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date
+  const formatDate = (date: string) => {
+    const d = new Date(date)
     return d.toLocaleDateString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
@@ -59,7 +64,7 @@ export function FileCard({ file, onDelete, onRetry }: FileCardProps) {
     })
   }
 
-  const status = file.status || 'parsing'
+  const status = (file.status as FileStatus) || 'pending'
   const config = statusConfig[status]
 
   return (
@@ -75,11 +80,11 @@ export function FileCard({ file, onDelete, onRetry }: FileCardProps) {
 
         <div className="flex-1 min-w-0">
           <Title level={5} className="!mb-1 !text-sm truncate">
-            {file.name}
+            {file.file_name}
           </Title>
           <div className="flex items-center gap-2">
             <Text type="secondary" className="text-xs">
-              {formatFileSize(file.size)}
+              {formatFileSize(file.file_size)}
             </Text>
             <Tag icon={config.icon} color={config.color} className="!m-0">
               {config.text}
@@ -100,28 +105,10 @@ export function FileCard({ file, onDelete, onRetry }: FileCardProps) {
         <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
           <div className="flex items-center justify-between text-sm">
             <Text type="secondary">上传时间</Text>
-            <Text>{formatDate(file.createdAt)}</Text>
+            <Text>{formatDate(file.created_at)}</Text>
           </div>
 
-          {file.errorMessage && (
-            <div className="bg-red-50 text-red-600 text-xs p-2 rounded">
-              错误：{file.errorMessage}
-            </div>
-          )}
-
           <Space className="w-full justify-end" wrap={false}>
-            {file.status === 'failed' && (
-              <Button
-                size="small"
-                icon={<SyncOutlined />}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRetry?.()
-                }}
-              >
-                重试
-              </Button>
-            )}
             <Button
               size="small"
               danger

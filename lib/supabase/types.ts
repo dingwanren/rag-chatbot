@@ -116,6 +116,43 @@ export interface Database {
         }
         Relationships: []
       }
+      knowledge_files: {
+        Row: {
+          id: string
+          knowledge_base_id: string
+          file_name: string
+          file_url: string
+          file_size: number
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          knowledge_base_id: string
+          file_name: string
+          file_url: string
+          file_size: number
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          knowledge_base_id?: string
+          file_name?: string
+          file_url?: string
+          file_size?: number
+          status?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'knowledge_files_knowledge_base_id_fkey'
+            columns: ['knowledge_base_id']
+            referencedRelation: 'knowledge_bases'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: {}
     Functions: {

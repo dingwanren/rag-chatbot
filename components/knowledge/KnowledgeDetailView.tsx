@@ -10,9 +10,10 @@ import {
   InboxOutlined,
 } from '@ant-design/icons'
 import type { UploadProps, TableProps } from 'antd'
-import { KBFile, FileParseStatus } from '@/types'
+import { KnowledgeFile, FileStatus } from '@/types'
 import { RetrievalSettings } from './RetrievalSettings'
 import { FileCard } from './FileCard'
+import { uploadKnowledgeFile, deleteKnowledgeFile } from '@/app/actions/knowledge-file'
 
 const { Title, Text } = Typography
 
@@ -21,16 +22,21 @@ interface KnowledgeDetailViewProps {
   knowledgeBaseName: string
 }
 
-const statusConfig: Record<FileParseStatus, { color: string; icon: React.ReactNode; text: string }> = {
-  parsing: {
+const statusConfig: Record<FileStatus, { color: string; icon: React.ReactNode; text: string }> = {
+  pending: {
+    color: 'yellow',
+    icon: null,
+    text: '待处理',
+  },
+  processing: {
     color: 'blue',
     icon: <SyncOutlined spin />,
-    text: '解析中',
+    text: '处理中',
   },
-  success: {
+  completed: {
     color: 'green',
     icon: null,
-    text: '成功',
+    text: '完成',
   },
   failed: {
     color: 'red',
@@ -43,7 +49,7 @@ export function KnowledgeDetailView({
   knowledgeBaseId,
   knowledgeBaseName,
 }: KnowledgeDetailViewProps) {
-  const [files, setFiles] = useState<KBFile[]>([])
+  const [files, setFiles] = useState<KnowledgeFile[]>([])
   const [activeTab, setActiveTab] = useState<'files' | 'settings'>('files')
   const [uploading, setUploading] = useState(false)
 
@@ -53,19 +59,25 @@ export function KnowledgeDetailView({
       content: `确定要删除文件 "${fileName}" 吗？`,
       okText: '确认',
       cancelText: '取消',
-      onOk: () => {
-        setFiles(prev => prev.filter(f => f.id !== fileId))
-        message.success('已删除文件')
+      onOk: async () => {
+        const { success, error } = await deleteKnowledgeFile(fileId)
+
+        if (success) {
+          setFiles(prev => prev.filter(f => f.id !== fileId))
+          message.success('已删除文件')
+        } else {
+          message.error(`删除失败：${error?.message}`)
+        }
       },
     })
   }, [])
 
   const handleRetryParse = useCallback((fileId: string) => {
-    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'parsing' as const } : f))
+    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'processing' } : f))
     message.loading({ content: '重新解析中...', key: 'retry', duration: 1.5 })
     setTimeout(() => {
       message.success({ content: '已重新提交解析', key: 'retry', duration: 2 })
-      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'success' as const } : f))
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'completed' } : f))
     }, 1500)
   }, [])
 
@@ -88,25 +100,32 @@ export function KnowledgeDetailView({
     })
   }
 
-  const handleCustomUpload: UploadProps['customRequest'] = ({ file, onSuccess, onError }) => {
+  const handleCustomUpload: UploadProps['customRequest'] = async ({ file, onSuccess, onError }) => {
     setUploading(true)
     const fileObj = file as File
-    // Mock upload
-    setTimeout(() => {
-      setUploading(false)
-      if (onSuccess) onSuccess('ok')
-      message.success(`${fileObj.name} 上传成功`)
-      const newFile: KBFile = {
-        id: `file-${Date.now()}`,
-        name: fileObj.name,
-        size: fileObj.size,
-        type: fileObj.type,
-        knowledgeBaseId,
-        createdAt: new Date(),
-        status: 'success',
+
+    try {
+      const { data, error } = await uploadKnowledgeFile(knowledgeBaseId, fileObj)
+
+      if (error) {
+        console.error('upload error:', error)
+        message.error(`上传失败：${error.message}`)
+        onError?.(error as any)
+        return
       }
-      setFiles(prev => [...prev, newFile])
-    }, 1500)
+
+      if (data) {
+        message.success(`${fileObj.name} 上传成功`)
+        setFiles(prev => [...prev, data])
+        onSuccess?.(data)
+      }
+    } catch (e) {
+      console.error('upload error:', e)
+      message.error(`上传失败：${e instanceof Error ? e.message : '未知错误'}`)
+      onError?.(e as any)
+    } finally {
+      setUploading(false)
+    }
   }
 
   const uploadProps: UploadProps = {
@@ -140,12 +159,12 @@ export function KnowledgeDetailView({
   }
 
   // Table columns for desktop
-  const columns: TableProps<KBFile>['columns'] = [
+  const columns: TableProps<KnowledgeFile>['columns'] = [
     {
       title: '文件名',
-      dataIndex: 'name',
-      key: 'name',
-      render: (name: string, record: KBFile) => (
+      dataIndex: 'file_name',
+      key: 'file_name',
+      render: (name: string, record: KnowledgeFile) => (
         <div className="flex items-center gap-2">
           <InboxOutlined className="text-blue-500" />
           <span className="font-medium">{name}</span>
@@ -154,8 +173,8 @@ export function KnowledgeDetailView({
     },
     {
       title: '大小',
-      dataIndex: 'size',
-      key: 'size',
+      dataIndex: 'file_size',
+      key: 'file_size',
       render: (size: number) => (
         <Text type="secondary">{formatFileSize(size)}</Text>
       ),
@@ -163,19 +182,19 @@ export function KnowledgeDetailView({
     },
     {
       title: '上传时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      render: (createdAt: Date) => (
+      dataIndex: 'created_at',
+      key: 'created_at',
+      render: (createdAt: string) => (
         <Text type="secondary">{formatDate(createdAt)}</Text>
       ),
       width: 160,
     },
     {
-      title: '解析状态',
+      title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status?: FileParseStatus) => {
-        const config = status ? statusConfig[status] : statusConfig.parsing
+      render: (status?: string) => {
+        const config = status ? statusConfig[status as FileStatus] : statusConfig.pending
         return (
           <Tag icon={config.icon} color={config.color}>
             {config.text}
@@ -188,22 +207,13 @@ export function KnowledgeDetailView({
       title: '操作',
       key: 'action',
       width: 150,
-      render: (_: unknown, record: KBFile) => (
+      render: (_: unknown, record: KnowledgeFile) => (
         <Space size="small">
-          {record.status === 'failed' && (
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleRetryParse(record.id)}
-            >
-              重试
-            </Button>
-          )}
           <Button
             type="link"
             size="small"
             danger
-            onClick={() => handleDeleteFile(record.id, record.name)}
+            onClick={() => handleDeleteFile(record.id, record.file_name)}
           >
             删除
           </Button>
@@ -211,8 +221,6 @@ export function KnowledgeDetailView({
       ),
     },
   ]
-
-  const successCount = files.filter(f => f.status === 'success').length
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
@@ -222,7 +230,7 @@ export function KnowledgeDetailView({
           <div>
             <Title level={4} className="!mb-2">{knowledgeBaseName}</Title>
             <Text type="secondary">
-              共 {files.length} 个文件 · 成功 {successCount} 个
+              共 {files.length} 个文件
             </Text>
           </div>
           <Upload {...uploadProps}>
@@ -289,7 +297,7 @@ export function KnowledgeDetailView({
                 <FileCard
                   key={file.id}
                   file={file}
-                  onDelete={() => handleDeleteFile(file.id, file.name)}
+                  onDelete={() => handleDeleteFile(file.id, file.file_name)}
                   onRetry={() => handleRetryParse(file.id)}
                 />
               ))}
