@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { KnowledgeFile } from '@/types'
+import { processFile } from '@/lib/process-file'
 
 /**
  * 上传文件到 Supabase Storage 并写入数据库
@@ -69,7 +70,6 @@ export async function uploadKnowledgeFile(
         knowledge_base_id: knowledgeBaseId,
         file_name: file.name,
         file_url: fileUrl,
-        file_path: path,
         file_size: file.size,
         status: 'pending',
       })
@@ -83,9 +83,25 @@ export async function uploadKnowledgeFile(
       return { data: null, error: new Error(`数据库写入失败：${dbError.message}`) }
     }
 
+    // 文件上传成功后，调用 processFile 解析 PDF 文本
+    const insertedFile = dbData as KnowledgeFile
+    console.log('=== 开始处理上传的 PDF 文件，fileId:', insertedFile.id, '===')
+    try {
+      const text = await processFile(insertedFile.id)
+      console.log('=== PDF 处理完成，文本长度:', text.length, '===')
+      // 更新状态为 processed
+      await supabase
+        .from('knowledge_files')
+        .update({ status: 'processed' })
+        .eq('id', insertedFile.id)
+    } catch (processError) {
+      console.error('File processing error:', processError)
+      // 处理失败不影响上传流程，仅记录日志
+    }
+
     revalidatePath(`/knowledge-base/${knowledgeBaseId}`)
 
-    return { data: dbData as KnowledgeFile, error: null }
+    return { data: insertedFile, error: null }
   } catch (e) {
     console.error('upload error:', e)
     return { data: null, error: new Error(`上传失败：${e instanceof Error ? e.message : '未知错误'}`) }
@@ -126,7 +142,7 @@ export async function getFiles(knowledgeBaseId: string) {
 
   const { data, error } = await supabase
     .from('knowledge_files')
-    .select('id, knowledge_base_id, file_name, file_url, file_path, file_size, status, created_at')
+    .select('id, knowledge_base_id, file_name, file_url, file_size, status, created_at')
     .eq('knowledge_base_id', knowledgeBaseId)
     .order('created_at', { ascending: false })
 
@@ -151,10 +167,10 @@ export async function deleteKnowledgeFile(fileId: string): Promise<{ success: bo
       throw new Error('未授权')
     }
 
-    // 1️⃣ 查询文件信息（使用 file_path）
+    // 1️⃣ 查询文件信息（使用 file_url）
     const { data: file, error: fileError } = await supabase
       .from('knowledge_files')
-      .select('id, knowledge_base_id, file_path')
+      .select('id, knowledge_base_id, file_url')
       .eq('id', fileId)
       .single()
 
@@ -176,10 +192,18 @@ export async function deleteKnowledgeFile(fileId: string): Promise<{ success: bo
       throw new Error('无权限删除此文件')
     }
 
-    // 3️⃣ 删除 Supabase Storage 文件（直接使用 file_path）
+    // 3️⃣ 从 file_url 提取 storage path
+    // URL format: https://<project>.supabase.co/storage/v1/object/public/rag-files/<path>
+    const urlParts = file.file_url.split('/rag-files/')
+    if (urlParts.length < 2) {
+      throw new Error('Invalid file URL format')
+    }
+    const storagePath = urlParts[1]
+
+    // 4️⃣ 删除 Supabase Storage 文件
     const { data, error: storageError } = await supabase.storage
       .from('rag-files')
-      .remove([file.file_path])
+      .remove([storagePath])
 
     console.log('删除结果:', data, storageError)
     if (storageError) {
@@ -187,7 +211,7 @@ export async function deleteKnowledgeFile(fileId: string): Promise<{ success: bo
       throw new Error(`删除存储文件失败：${storageError.message}`)
     }
 
-    // 5️⃣ 删除数据库记录（knowledge_chunks 会 CASCADE 自动删除）
+    // 5️⃣ 删除数据库记录
     const { error: dbError } = await supabase
       .from('knowledge_files')
       .delete()

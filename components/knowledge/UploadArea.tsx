@@ -8,13 +8,13 @@ import type { UploadProps } from 'antd'
 const { Text } = Typography
 
 interface UploadAreaProps {
-  onUpload?: (files: File[]) => void
+  onUpload?: (files: File[]) => Promise<void> | void
 }
 
 export function UploadArea({ onUpload }: UploadAreaProps) {
   const [uploading, setUploading] = useState(false)
 
-  const handleUpload: UploadProps['onChange'] = (info) => {
+  const handleUpload: UploadProps['onChange'] = async (info) => {
     const { status, originFileObj } = info.file
 
     if (status === 'uploading') {
@@ -24,9 +24,13 @@ export function UploadArea({ onUpload }: UploadAreaProps) {
 
     if (status === 'done') {
       setUploading(false)
-      message.success(`${info.file.name} 上传成功`)
+      // Don't show success here - let the parent handle it
       if (originFileObj && onUpload) {
-        onUpload([originFileObj])
+        try {
+          await onUpload([originFileObj])
+        } catch (e) {
+          // Error handled by parent
+        }
       }
     } else if (status === 'error') {
       setUploading(false)
@@ -35,12 +39,12 @@ export function UploadArea({ onUpload }: UploadAreaProps) {
   }
 
   const handleCustomRequest: UploadProps['customRequest'] = ({ file, onSuccess, onError }) => {
-    // Mock upload - in real app, this would upload to server
+    // Just pass through - actual upload happens in onChange
     setTimeout(() => {
       if (onSuccess) {
         onSuccess('ok')
       }
-    }, 1000)
+    }, 100)
   }
 
   const uploadProps: UploadProps = {

@@ -21,7 +21,6 @@ export interface KnowledgeFile {
   knowledge_base_id: string
   file_name: string
   file_url: string
-  file_path: string
   file_size: number
   status: string
   created_at: string

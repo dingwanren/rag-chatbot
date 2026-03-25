@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Button, Typography, Table, Tag, Space, Modal, message, Upload, Flex } from 'antd'
+import { useState, useCallback, useEffect } from 'react'
+import { Button, Typography, Table, Tag, Space, Modal, message, Upload, Flex, Spin } from 'antd'
 import {
   PlusOutlined,
   UploadOutlined,
@@ -10,10 +10,10 @@ import {
   InboxOutlined,
 } from '@ant-design/icons'
 import type { UploadProps, TableProps } from 'antd'
-import { KnowledgeFile, FileStatus } from '@/types'
+import { KnowledgeFile } from '@/types'
 import { RetrievalSettings } from './RetrievalSettings'
 import { FileCard } from './FileCard'
-import { uploadKnowledgeFile, deleteKnowledgeFile } from '@/app/actions/knowledge-file'
+import { uploadKnowledgeFile, deleteKnowledgeFile, getFiles } from '@/app/actions/knowledge-file'
 
 const { Title, Text } = Typography
 
@@ -22,10 +22,10 @@ interface KnowledgeDetailViewProps {
   knowledgeBaseName: string
 }
 
-const statusConfig: Record<FileStatus, { color: string; icon: React.ReactNode; text: string }> = {
+const statusConfig: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
   pending: {
     color: 'yellow',
-    icon: null,
+    icon: undefined,
     text: '待处理',
   },
   processing: {
@@ -35,12 +35,12 @@ const statusConfig: Record<FileStatus, { color: string; icon: React.ReactNode; t
   },
   completed: {
     color: 'green',
-    icon: null,
+    icon: undefined,
     text: '完成',
   },
   failed: {
     color: 'red',
-    icon: null,
+    icon: undefined,
     text: '失败',
   },
 }
@@ -50,8 +50,30 @@ export function KnowledgeDetailView({
   knowledgeBaseName,
 }: KnowledgeDetailViewProps) {
   const [files, setFiles] = useState<KnowledgeFile[]>([])
+  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'files' | 'settings'>('files')
   const [uploading, setUploading] = useState(false)
+
+  // Load files from server
+  useEffect(() => {
+    loadFiles()
+  }, [knowledgeBaseId])
+
+  const loadFiles = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await getFiles(knowledgeBaseId)
+      if (error) {
+        message.error(error.message)
+      } else {
+        setFiles(data ?? [])
+      }
+    } catch (e) {
+      message.error('加载文件列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleDeleteFile = useCallback((fileId: string, fileName: string) => {
     Modal.confirm({
@@ -63,7 +85,7 @@ export function KnowledgeDetailView({
         const { success, error } = await deleteKnowledgeFile(fileId)
 
         if (success) {
-          setFiles(prev => prev.filter(f => f.id !== fileId))
+          await loadFiles()
           message.success('已删除文件')
         } else {
           message.error(`删除失败：${error?.message}`)
@@ -116,7 +138,7 @@ export function KnowledgeDetailView({
 
       if (data) {
         message.success(`${fileObj.name} 上传成功`)
-        setFiles(prev => [...prev, data])
+        await loadFiles()
         onSuccess?.(data)
       }
     } catch (e) {
@@ -194,7 +216,7 @@ export function KnowledgeDetailView({
       dataIndex: 'status',
       key: 'status',
       render: (status?: string) => {
-        const config = status ? statusConfig[status as FileStatus] : statusConfig.pending
+        const config = status && statusConfig[status] ? statusConfig[status] : statusConfig.pending
         return (
           <Tag icon={config.icon} color={config.color}>
             {config.text}
@@ -278,35 +300,49 @@ export function KnowledgeDetailView({
           <>
             {/* Desktop Table */}
             <div className="hidden md:block h-full overflow-auto p-6">
-              <Table
-                columns={columns}
-                dataSource={files}
-                rowKey="id"
-                pagination={{
-                  pageSize: 10,
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条`,
-                }}
-                scroll={{ y: 'calc(100vh - 300px)' }}
-              />
+              {loading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Spin />
+                </div>
+              ) : (
+                <Table
+                  columns={columns}
+                  dataSource={files}
+                  rowKey="id"
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    showTotal: (total) => `共 ${total} 条`,
+                  }}
+                  scroll={{ y: 'calc(100vh - 300px)' }}
+                />
+              )}
             </div>
 
             {/* Mobile Card List */}
             <div className="md:hidden h-full overflow-auto p-4 space-y-3">
-              {files.map((file) => (
-                <FileCard
-                  key={file.id}
-                  file={file}
-                  onDelete={() => handleDeleteFile(file.id, file.file_name)}
-                  onRetry={() => handleRetryParse(file.id)}
-                />
-              ))}
-              {files.length === 0 && (
-                <div className="text-center py-12 text-gray-400">
-                  <InboxOutlined className="text-5xl mb-4" />
-                  <p>暂无文件</p>
-                  <p className="text-sm">点击上方上传文件</p>
+              {loading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Spin />
                 </div>
+              ) : (
+                <>
+                  {files.map((file) => (
+                    <FileCard
+                      key={file.id}
+                      file={file}
+                      onDelete={() => handleDeleteFile(file.id, file.file_name)}
+                      onRetry={() => handleRetryParse(file.id)}
+                    />
+                  ))}
+                  {files.length === 0 && (
+                    <div className="text-center py-12 text-gray-400">
+                      <InboxOutlined className="text-5xl mb-4" />
+                      <p>暂无文件</p>
+                      <p className="text-sm">点击上方上传文件</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </>

@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { deleteFile } from '@/app/actions/knowledge-file'
+import { deleteKnowledgeFile as deleteFile } from '@/app/actions/knowledge-file'
 import type { KnowledgeFile } from '@/lib/supabase/types'
 
 interface FileListProps {
   files: KnowledgeFile[]
   knowledgeBaseId: string
+  onFileDeleted?: () => void
 }
 
 function formatFileSize(bytes: number): string {
@@ -29,7 +30,7 @@ function formatDate(dateStr: string): string {
   })
 }
 
-export function FileList({ files, knowledgeBaseId }: FileListProps) {
+export function FileList({ files, knowledgeBaseId, onFileDeleted }: FileListProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -40,12 +41,14 @@ export function FileList({ files, knowledgeBaseId }: FileListProps) {
     setDeletingId(fileId)
 
     startTransition(async () => {
-      const { data, error } = await deleteFile(fileId)
+      const { success, error } = await deleteFile(fileId)
 
       if (error) {
         alert(`删除失败：${error.message}`)
         setDeletingId(null)
       } else {
+        // 通知父组件刷新列表
+        onFileDeleted?.()
         router.refresh()
       }
     })

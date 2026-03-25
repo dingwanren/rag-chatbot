@@ -16,7 +16,7 @@ const { Title, Text } = Typography
 const statusConfig: Record<FileStatus, { color: string; icon: React.ReactNode; text: string }> = {
   pending: {
     color: 'yellow',
-    icon: null,
+    icon: undefined,
     text: '待处理',
   },
   processing: {
@@ -26,12 +26,12 @@ const statusConfig: Record<FileStatus, { color: string; icon: React.ReactNode; t
   },
   completed: {
     color: 'green',
-    icon: null,
+    icon: undefined,
     text: '完成',
   },
   failed: {
     color: 'red',
-    icon: null,
+    icon: undefined,
     text: '失败',
   },
 }
@@ -65,7 +65,7 @@ export function FileCard({ file, onDelete, onRetry }: FileCardProps) {
   }
 
   const status = (file.status as FileStatus) || 'pending'
-  const config = statusConfig[status]
+  const config = statusConfig[status] ?? statusConfig.pending
 
   return (
     <Card

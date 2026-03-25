@@ -5,13 +5,20 @@ import { revalidatePath } from 'next/cache'
 import type { KnowledgeBase as DbKnowledgeBase } from '@/lib/supabase/types'
 import type { KnowledgeBase } from '@/types'
 
-function toKnowledgeBase(db: DbKnowledgeBase): KnowledgeBase {
+async function toKnowledgeBase(db: DbKnowledgeBase, supabase: any): Promise<KnowledgeBase> {
+  // 获取该知识库下的文件数量
+  const { count } = await supabase
+    .from('knowledge_files')
+    .select('*', { count: 'exact', head: true })
+    .eq('knowledge_base_id', db.id)
+    .eq('status', 'processed')
+
   return {
     id: db.id,
     name: db.name,
     description: db.description ?? undefined,
     createdAt: new Date(db.created_at),
-    documentCount: 0,
+    documentCount: count ?? 0,
   }
 }
 
@@ -37,7 +44,10 @@ export async function getKnowledgeBases() {
     return { data: null, error: new Error(`获取知识库列表失败：${error.message}`) }
   }
 
-  const knowledgeBases = (data ?? []).map(toKnowledgeBase)
+  // 并行获取每个知识库的文档数量
+  const knowledgeBases = await Promise.all(
+    (data ?? []).map((kb) => toKnowledgeBase(kb, supabase))
+  )
   return { data: knowledgeBases, error: null }
 }
 
@@ -68,7 +78,7 @@ export async function createKnowledgeBase(name: string, description?: string) {
 
   revalidatePath('/')
 
-  return { data: toKnowledgeBase(data), error: null }
+  return { data: await toKnowledgeBase(data, supabase), error: null }
 }
 
 /**
@@ -100,7 +110,7 @@ export async function renameKnowledgeBase(id: string, name: string) {
 
   revalidatePath('/')
 
-  return { data: toKnowledgeBase(data), error: null }
+  return { data: await toKnowledgeBase(data, supabase), error: null }
 }
 
 /**
@@ -132,5 +142,5 @@ export async function deleteKnowledgeBase(id: string) {
 
   revalidatePath('/')
 
-  return { data: toKnowledgeBase(data), error: null }
+  return { data: await toKnowledgeBase(data, supabase), error: null }
 }

@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bubble, Sender, type BubbleListProps } from '@ant-design/x'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { Flex, Avatar, Spin, Tabs, Typography, Dropdown, message, Modal, Button } from 'antd'
 import { UserOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
-import { FileList } from './FileList'
+import { FileList } from '@/app/components/file-list'
 import { UploadArea } from './UploadArea'
-import { KBFile, Chat } from '@/types'
+import { Chat, KnowledgeFile } from '@/types'
 import { MarkdownContent } from '../chat/MarkdownContent'
+import { getFiles } from '@/app/actions/knowledge-file'
 
 const { Title } = Typography
 
@@ -18,43 +19,6 @@ interface KnowledgeBasePageProps {
   knowledgeBaseId: string
   knowledgeBaseName: string
 }
-
-// Mock data
-const mockFiles: KBFile[] = [
-  {
-    id: 'file-1',
-    name: '产品手册.pdf',
-    size: 1024 * 1024 * 2,
-    type: 'application/pdf',
-    knowledgeBaseId: 'kb-1',
-    createdAt: new Date(),
-  },
-  {
-    id: 'file-2',
-    name: '技术文档.docx',
-    size: 1024 * 500,
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    knowledgeBaseId: 'kb-1',
-    createdAt: new Date(),
-  },
-]
-
-const mockChats: Chat[] = [
-  {
-    id: 'chat-kb-1',
-    title: '产品知识问答',
-    createdAt: new Date(),
-    mode: 'rag',
-    knowledgeBaseId: 'kb-1',
-  },
-  {
-    id: 'chat-kb-2',
-    title: '文档内容咨询',
-    createdAt: new Date(),
-    mode: 'rag',
-    knowledgeBaseId: 'kb-1',
-  },
-]
 
 let id = 0
 const getKey = () => `bubble_${id++}`
@@ -67,10 +31,11 @@ const subscribeToMounted = (onStoreChange: () => void) => {
 export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: KnowledgeBasePageProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('chat')
-  const [files, setFiles] = useState<KBFile[]>(mockFiles)
-  const [chats, setChats] = useState<Chat[]>(mockChats)
+  const [files, setFiles] = useState<KnowledgeFile[]>([])
+  const [chats, setChats] = useState<Chat[]>([])
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
   const [input, setInput] = useState('')
+  const [loadingFiles, setLoadingFiles] = useState(true)
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
@@ -79,6 +44,27 @@ export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: Knowle
   })
 
   const isMounted = useState(true)[0]
+
+  // Load files from server
+  useEffect(() => {
+    loadFiles()
+  }, [knowledgeBaseId])
+
+  const loadFiles = async () => {
+    setLoadingFiles(true)
+    try {
+      const { data, error } = await getFiles(knowledgeBaseId)
+      if (error) {
+        message.error(error.message)
+      } else {
+        setFiles(data ?? [])
+      }
+    } catch (e) {
+      message.error('加载文件列表失败')
+    } finally {
+      setLoadingFiles(false)
+    }
+  }
 
   // Chat list operations
   const handleDeleteChat = useCallback((key: string) => {
@@ -139,24 +125,35 @@ export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: Knowle
       content: '删除后无法恢复',
       okText: '确认',
       cancelText: '取消',
-      onOk: () => {
-        setFiles(prev => prev.filter(file => file.id !== key))
-        message.success('已删除文件')
+      onOk: async () => {
+        const { success, error } = await import('@/app/actions/knowledge-file').then(m => m.deleteKnowledgeFile(key))
+        if (error) {
+          message.error(error.message)
+        } else {
+          await loadFiles()
+          message.success('已删除文件')
+        }
       },
     })
   }, [])
 
-  const handleFileUpload = useCallback((uploadedFiles: File[]) => {
-    const newFiles: KBFile[] = uploadedFiles.map((file, index) => ({
-      id: `file-${Date.now()}-${index}`,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      knowledgeBaseId,
-      createdAt: new Date(),
-    }))
-    setFiles(prev => [...prev, ...newFiles])
-    message.success(`已上传 ${uploadedFiles.length} 个文件`)
+  const handleFileUpload = useCallback(async (uploadedFiles: File[]) => {
+    const { uploadKnowledgeFile } = await import('@/app/actions/knowledge-file')
+    
+    let successCount = 0
+    for (const file of uploadedFiles) {
+      const { data, error } = await uploadKnowledgeFile(knowledgeBaseId, file)
+      if (!error) {
+        successCount++
+      }
+    }
+    
+    if (successCount > 0) {
+      await loadFiles()
+      message.success(`已上传 ${successCount} 个文件`)
+    } else {
+      message.error('上传失败')
+    }
   }, [knowledgeBaseId])
 
   // Create new chat when sending message without selected chat
@@ -305,10 +302,17 @@ export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: Knowle
       children: (
         <Flex vertical style={{ height: '100%' }}>
           <UploadArea onUpload={handleFileUpload} />
-          <FileList
-            files={files}
-            onDelete={handleDeleteFile}
-          />
+          {loadingFiles ? (
+            <div className="flex items-center justify-center py-12">
+              <Spin />
+            </div>
+          ) : (
+            <FileList
+              files={files}
+              knowledgeBaseId={knowledgeBaseId}
+              onFileDeleted={loadFiles}
+            />
+          )}
         </Flex>
       ),
     },
