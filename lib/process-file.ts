@@ -28,7 +28,20 @@ export async function processFile(fileId: string): Promise<string> {
       throw new Error('文件未关联知识库')
     }
 
-    console.log(`开始处理文件：${fileRecord.file_name}, URL: ${fileRecord.file_url}, knowledgeBaseId: ${fileRecord.knowledge_base_id}`)
+    // 获取知识库的 user_id
+    const { data: kbData, error: kbError } = await supabase
+      .from('knowledge_bases')
+      .select('user_id')
+      .eq('id', fileRecord.knowledge_base_id)
+      .single()
+
+    if (kbError || !kbData) {
+      throw new Error('查询知识库失败')
+    }
+
+    const userId = kbData.user_id
+
+    console.log(`开始处理文件：${fileRecord.file_name}, URL: ${fileRecord.file_url}, knowledgeBaseId: ${fileRecord.knowledge_base_id}, userId: ${userId}`)
 
     // 2. 从 file_url 下载 PDF (public URL)
     const response = await fetch(fileRecord.file_url)
@@ -69,7 +82,7 @@ export async function processFile(fileId: string): Promise<string> {
     )
     console.log('embeddings generated:', embeddings.length)
 
-    // 8. 构建 Pinecone vectors
+    // 8. 构建 Pinecone vectors（包含 userId 用于安全过滤）
     const vectors = chunks.map((chunk, index) => ({
       id: `${fileId}-${index}`,
       values: embeddings[index],
@@ -79,6 +92,7 @@ export async function processFile(fileId: string): Promise<string> {
         chunkIndex: index,
         fileName: fileRecord.file_name,
         knowledgeBaseId: fileRecord.knowledge_base_id,
+        userId: userId,
       },
     }))
     console.log('vectors:', vectors.length)
@@ -86,7 +100,7 @@ export async function processFile(fileId: string): Promise<string> {
     // 9. 批量写入 Pinecone（分批处理，每 50 条一次）
     const index = pinecone.index('rag-chatbot')
     const batchSize = 50
-    
+
     for (let i = 0; i < vectors.length; i += batchSize) {
       const batch = vectors.slice(i, i + batchSize)
       await index.upsert(batch)

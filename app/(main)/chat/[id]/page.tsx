@@ -3,11 +3,14 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bubble, Sender, type BubbleListProps } from '@ant-design/x'
-import { Flex, Avatar, Spin } from 'antd'
+import { Flex, Avatar, Spin, message } from 'antd'
 import { UserOutlined, RobotOutlined } from '@ant-design/icons'
 import { ChatHeader } from '@/components/chat/ChatHeader'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
 import { useMessages, useSendMessage } from '@/hooks/useChat'
+import { getChat } from '@/app/actions/chat'
+import { getKnowledgeBase } from '@/app/actions/knowledge-base'
+import type { Chat as ChatType } from '@/types'
 
 interface ChatDetailPageProps {
   params: Promise<{ id: string }>
@@ -19,17 +22,38 @@ const getKey = () => `bubble_${id++}`
 export default function ChatDetailPage({ params }: ChatDetailPageProps) {
   const router = useRouter()
   const [chatId, setChatId] = useState<string | null>(null)
+  const [chatInfo, setChatInfo] = useState<ChatType | null>(null)
+  const [knowledgeBaseName, setKnowledgeBaseName] = useState<string | undefined>()
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [hasSentPending, setHasSentPending] = useState(false)
+  const [loadingChat, setLoadingChat] = useState(true)
 
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(chatId)
   const { sendMessage: sendStreamingMessage, isPending } = useSendMessage()
 
-  // 解析 params 并检查 sessionStorage
+  // 解析 params 并加载聊天信息
   useEffect(() => {
-    params.then(({ id }) => {
+    params.then(async ({ id }) => {
       setChatId(id)
+
+      try {
+        const chat = await getChat(id)
+        setChatInfo(chat)
+
+        // 如果是 RAG 聊天，加载知识库名称
+        if (chat.mode === 'rag' && chat.knowledge_base_id) {
+          const { data: kb } = await getKnowledgeBase(chat.knowledge_base_id)
+          if (kb) {
+            setKnowledgeBaseName(kb.name)
+          }
+        }
+      } catch (error) {
+        console.error('Load chat error:', error)
+        message.error('加载聊天信息失败')
+      } finally {
+        setLoadingChat(false)
+      }
 
       // 检查是否有待发送的消息
       const stored = sessionStorage.getItem(`chat-${id}-pending`)
@@ -42,7 +66,7 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
 
   // 自动发送待处理消息
   useEffect(() => {
-    if (pendingMessage && chatId && !hasSentPending) {
+    if (pendingMessage && chatId && !hasSentPending && !loadingChat) {
       setHasSentPending(true)
 
       sendStreamingMessage({ chatId, content: pendingMessage })
@@ -53,9 +77,9 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
           setPendingMessage(null)
         })
     }
-  }, [pendingMessage, chatId, hasSentPending, sendStreamingMessage])
+  }, [pendingMessage, chatId, hasSentPending, sendStreamingMessage, loadingChat])
 
-  const isMounted = chatId !== null
+  const isMounted = chatId !== null && !loadingChat
 
   // 转换数据库消息为 Bubble.List 格式
   const bubbleItems = useMemo(() => {
@@ -84,21 +108,28 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
     },
   }), [isLoading])
 
-  const handleSendMessage = useCallback(async (message: string) => {
+  const handleSendMessage = useCallback(async (messageText: string) => {
     if (!chatId) return
-    if (!message.trim()) return
+    if (!messageText.trim()) return
+
+    // 如果是 RAG 聊天但没有知识库，禁止发送
+    if (chatInfo?.mode === 'rag' && !chatInfo.knowledge_base_id) {
+      message.error('该聊天未绑定知识库，无法发送消息')
+      return
+    }
 
     try {
-      await sendStreamingMessage({ chatId, content: message })
+      await sendStreamingMessage({ chatId, content: messageText })
     } catch (error) {
       console.error('Send message error:', error)
+      message.error('发送消息失败')
     }
-  }, [chatId, sendStreamingMessage])
+  }, [chatId, chatInfo, sendStreamingMessage])
 
   if (!isMounted) {
     return (
       <div className="flex flex-col h-full">
-        <ChatHeader title="Loading..." />
+        <ChatHeader title="加载中..." />
         <div className="flex-1 flex justify-center items-center">
           <Spin size="large" description="加载中..." />
         </div>
@@ -108,7 +139,11 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <ChatHeader title="New Chat" />
+      <ChatHeader
+        title={chatInfo?.title || '新对话'}
+        mode={chatInfo?.mode}
+        knowledgeBaseName={knowledgeBaseName}
+      />
       <div className="flex flex-1 min-h-0">
         <Bubble.List
           role={memoRole}
@@ -118,12 +153,12 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
         />
       </div>
       <Sender
-        placeholder="输入消息..."
+        placeholder={chatInfo?.mode === 'rag' ? '输入问题，基于知识库获取答案...' : '输入消息...'}
         value={input}
         onChange={setInput}
         loading={isLoading}
-        onSubmit={(message) => {
-          handleSendMessage(message)
+        onSubmit={(messageText) => {
+          handleSendMessage(messageText)
           setInput('')
         }}
       />

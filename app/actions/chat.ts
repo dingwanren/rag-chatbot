@@ -42,6 +42,31 @@ export async function createChat(
 }
 
 /**
+ * 获取单个聊天信息
+ */
+export async function getChat(chatId: string) {
+  const supabase = await createClient()
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    throw new Error('未授权')
+  }
+
+  const { data, error } = await supabase
+    .from('chats')
+    .select('id, title, mode, knowledge_base_id, created_at, updated_at')
+    .eq('id', chatId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (error) {
+    throw new Error(`获取聊天信息失败：${error.message}`)
+  }
+
+  return data as Chat
+}
+
+/**
  * 获取聊天列表（按 updated_at 倒序）
  * 依赖 RLS：只返回当前用户的 chats
  */
@@ -107,10 +132,13 @@ export async function getMessages(chatId: string) {
  * 返回 assistant message 的 id 用于后续 streaming 更新
  */
 export async function sendMessage(chatId: string, content: string) {
+  console.log('[sendMessage] Called with:', { chatId, content })
+  
   const supabase = await createClient()
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
+    console.error('[sendMessage] Auth error:', authError)
     throw new Error('未授权')
   }
 
@@ -123,6 +151,7 @@ export async function sendMessage(chatId: string, content: string) {
     .single()
 
   if (chatError || !chat) {
+    console.error('[sendMessage] Chat error:', chatError)
     throw new Error('聊天不存在或无权限')
   }
 
@@ -135,9 +164,12 @@ export async function sendMessage(chatId: string, content: string) {
   if (!rpcError && rpcData && rpcData.length > 0) {
     // RPC 成功，返回 assistant message id
     const assistantMessageId = rpcData[0].assistant_message_id
+    console.log('[sendMessage] RPC success, assistantMessageId:', assistantMessageId)
     return { assistantMessageId, chatTitle: chat.title }
   }
 
+  console.log('[sendMessage] RPC not available, using normal insert')
+  
   // RPC 不存在，使用普通插入
   const { data: insertData, error: insertError } = await supabase
     .from('messages')
@@ -158,11 +190,15 @@ export async function sendMessage(chatId: string, content: string) {
     .select('id')
 
   if (insertError) {
+    console.error('[sendMessage] Insert error:', insertError)
     throw new Error(`发送消息失败：${insertError.message}`)
   }
 
   // 返回 assistant message 的 id（第二个插入的记录）
   const assistantMessageId = insertData[1]?.id
+  console.log('[sendMessage] Insert success, assistantMessageId:', assistantMessageId)
+  console.log('[sendMessage] insertData:', insertData)
+  
   return { assistantMessageId, chatTitle: chat.title }
 }
 

@@ -132,7 +132,7 @@ export function KnowledgeBaseList({ selectedId, onSelect }: KnowledgeBaseListPro
     if (onSelect) {
       onSelect(kb)
     } else {
-      router.push(`/knowledge-base/${kb.id}`)
+      router.push(`/knowledge-bases/${kb.id}`)
     }
   }
 

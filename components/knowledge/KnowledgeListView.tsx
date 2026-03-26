@@ -78,7 +78,7 @@ export function KnowledgeListView({
         createdAt: new Date(),
         documentCount: 0,
       }
-      router.push(`/knowledge/${newKb.id}`)
+      router.push(`/knowledge-bases/${newKb.id}`)
     }
   }
 
@@ -86,7 +86,7 @@ export function KnowledgeListView({
     if (onSelect) {
       onSelect(kb)
     } else {
-      router.push(`/knowledge/${kb.id}`)
+      router.push(`/knowledge-bases/${kb.id}`)
     }
   }
 

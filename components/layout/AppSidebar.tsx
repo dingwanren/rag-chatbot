@@ -7,47 +7,15 @@ import type { MenuProps } from 'antd'
 import {
   DeleteOutlined,
   EditOutlined,
-  DatabaseOutlined,
   PlusOutlined,
   MessageOutlined,
-  FolderOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons'
 import { message, Modal, Input } from 'antd'
 import { SidebarHeader } from './SidebarHeader'
 import { SidebarFooter } from './SidebarFooter'
-import type { KnowledgeBase, Chat } from '@/lib/supabase/types'
+import type { Chat } from '@/lib/supabase/types'
 import { useChatList, useDeleteChat, useRenameChat } from '@/hooks/useChat'
-
-// Static mock data for knowledge bases (TODO: 实现知识库 API)
-const mockKnowledgeBases: KnowledgeBase[] = [
-  {
-    id: 'kb-1',
-    name: '产品文档',
-    description: '产品相关知识和资料',
-    document_count: 12,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    user_id: '',
-  },
-  {
-    id: 'kb-2',
-    name: '技术手册',
-    description: '技术支持文档',
-    document_count: 8,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    user_id: '',
-  },
-  {
-    id: 'kb-3',
-    name: '常见问题',
-    description: '客户常见问题集合',
-    document_count: 5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    user_id: '',
-  },
-]
 
 interface AppSidebarProps {
   className?: string
@@ -60,17 +28,11 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
   const { chats, isLoading: isLoadingChats } = useChatList()
   const { deleteChat, isPending: isDeleting } = useDeleteChat()
   const { renameChat, isPending: isRenaming } = useRenameChat()
-  const [editingKey, setEditingKey] = useState<string | null>(null)
 
   const handleNewChat = useCallback(() => {
-    // 只跳转到首页，不创建聊天
-    // 等用户发送消息时才创建聊天
-    router.push('/')
-  }, [router])
-
-  const handleNavigateToKnowledge = useCallback(() => {
-    router.push('/knowledge')
-  }, [router])
+    // 触发全局事件，打开创建聊天 Modal
+    window.dispatchEvent(new CustomEvent('openCreateChatModal'))
+  }, [])
 
   const handleDeleteChat = useCallback((key: string) => {
     Modal.confirm({
@@ -115,7 +77,6 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
       okText: '确认',
       cancelText: '取消',
       onOk: () => {
-        // 获取输入框的值
         const input = document.querySelector('.ant-modal input') as HTMLInputElement
         const newTitle = input?.value.trim()
         if (newTitle) {
@@ -135,41 +96,9 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
     }
   }
 
-  // 构建 Conversations items
-  const items: ConversationsProps['items'] = useMemo(() => [
-    // 知识库管理入口
-    {
-      key: 'knowledge-manage',
-      label: (
-        <div
-          onClick={handleNavigateToKnowledge}
-          className="flex items-center w-full cursor-pointer"
-        >
-          <FolderOutlined style={{ marginRight: 8, fontSize: 16 }} />
-          <span>知识库管理</span>
-        </div>
-      ),
-      group: '知识管理',
-    },
-    // RAG 模式分组 - 知识库列表
-    ...mockKnowledgeBases.map((kb) => ({
-      key: `kb-${kb.id}`,
-      label: (
-        <div
-          onClick={(e) => {
-            e.preventDefault()
-            router.push(`/knowledge/${kb.id}`)
-          }}
-          className="flex items-center w-full cursor-pointer"
-        >
-          <DatabaseOutlined style={{ marginRight: 8 }} />
-          {kb.name}
-        </div>
-      ),
-      group: 'RAG 模式',
-    })),
-    // 普通聊天分组
-    ...chats.map((chat) => ({
+  // 构建 Conversations items - 只显示聊天列表
+  const items: ConversationsProps['items'] = useMemo(() => {
+    return chats.map((chat) => ({
       key: chat.id,
       label: (
         <div
@@ -179,21 +108,24 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
           }}
           className="flex items-center w-full cursor-pointer"
         >
-          <MessageOutlined style={{ marginRight: 8 }} />
-          {chat.title}
+          {chat.mode === 'rag' ? (
+            <DatabaseOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+          ) : (
+            <MessageOutlined style={{ marginRight: 8 }} />
+          )}
+          <span className="flex-1 truncate">{chat.title}</span>
+          {chat.mode === 'rag' && (
+            <span className="text-xs text-muted-foreground ml-1" title="知识库聊天">
+              📚
+            </span>
+          )}
         </div>
       ),
-      group: '普通聊天',
-    })),
-  ], [chats, handleNavigateToKnowledge, router])
+    }))
+  }, [chats, router])
 
-  // 仅普通聊天有操作菜单
+  // 菜单配置 - 只有聊天有操作菜单
   const menuConfig: ConversationsProps['menu'] = useCallback((conversation) => {
-    if (conversation.group === 'RAG 模式' || conversation.group === '知识管理') {
-      return undefined
-    }
-
-    // conversation.key 是聊天的 id
     const chatId = conversation.key as string
 
     const menuItems: MenuProps['items'] = [
@@ -226,9 +158,6 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
 
   // 高亮当前选中的项目
   const selectedKey = useMemo(() => {
-    if (pathname.includes('/knowledge')) {
-      return pathname.includes('/knowledge/') ? pathname.split('/').pop() : 'knowledge-manage'
-    }
     if (pathname.includes('/chat/')) {
       return pathname.split('/').pop()
     }
@@ -243,25 +172,29 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
     >
       <SidebarHeader />
       <div className="flex-1 overflow-y-auto p-2">
-        <Conversations
-          items={items}
-          activeKey={selectedKey}
-          creation={{
-            label: '新建对话',
-            icon: <PlusOutlined />,
-            onClick: handleNewChat,
-          }}
-          menu={menuConfig}
-          groupable={{
-            label: (group) => (
-              <span className="text-xs font-medium text-sidebar-foreground px-2 py-1">
-                {group}
-              </span>
-            ),
-            collapsible: true,
-          }}
-          style={{ background: 'transparent' }}
-        />
+        {isLoadingChats ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+            加载中...
+          </div>
+        ) : chats.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">
+            <MessageOutlined className="text-4xl mb-2 block" />
+            <p>暂无对话</p>
+            <p className="text-xs mt-1">点击"新建对话"开始聊天</p>
+          </div>
+        ) : (
+          <Conversations
+            items={items}
+            activeKey={selectedKey}
+            creation={{
+              label: '新建对话',
+              icon: <PlusOutlined />,
+              onClick: handleNewChat,
+            }}
+            menu={menuConfig}
+            style={{ background: 'transparent' }}
+          />
+        )}
       </div>
       <SidebarFooter />
     </aside>

@@ -9,6 +9,7 @@ import {
   deleteChat,
   renameChat,
 } from '@/app/actions/chat'
+import { getKnowledgeBases } from '@/app/actions/knowledge-base'
 import type { Chat, Message } from '@/lib/supabase/types'
 
 /**
@@ -82,18 +83,26 @@ export function useSendMessage() {
 
   const mutation = useMutation({
     mutationFn: async ({ chatId, content }: { chatId: string; content: string }) => {
+      console.log('[useSendMessage] Starting to send message:', { chatId, content })
+      
       // 1. 发送消息（创建 user + assistant 占位）
       const { assistantMessageId } = await sendStreamingMessage(chatId, content)
+      console.log('[useSendMessage] Got assistantMessageId:', assistantMessageId)
 
       // 2. 开始流式请求
+      const payload = { chatId, messageId: assistantMessageId }
+      console.log('[useSendMessage] Fetch payload:', payload)
+      
       const response = await fetch('/api/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, messageId: assistantMessageId }),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
-        throw new Error('Streaming failed')
+        const errorText = await response.text()
+        console.error('[useSendMessage] Streaming response error:', response.status, errorText)
+        throw new Error(`Streaming failed: ${response.status} ${errorText}`)
       }
 
       if (!response.body) {
@@ -188,5 +197,23 @@ export function useDeleteChat() {
     deleteChat: mutation.mutateAsync,
     isPending: mutation.isPending,
     error: mutation.error,
+  }
+}
+
+/**
+ * Hook: 获取知识库列表
+ */
+export function useKnowledgeBases() {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['knowledgeBases'],
+    queryFn: getKnowledgeBases,
+    retry: 1,
+  })
+
+  return {
+    knowledgeBases: data?.data ?? [],
+    isLoading,
+    error: data?.error || error,
+    refetch,
   }
 }

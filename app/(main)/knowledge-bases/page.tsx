@@ -5,7 +5,7 @@ import { KnowledgeBaseList } from '@/app/components/knowledge-base-list'
 import { KnowledgeDetailView } from '@/components/knowledge/KnowledgeDetailView'
 import { KnowledgeBase } from '@/types'
 
-export default function KnowledgeManagementPage() {
+export default function KnowledgeBasesPage() {
   const [selectedKnowledgeBase, setSelectedKnowledgeBase] = useState<KnowledgeBase | null>(null)
 
   const handleSelectKnowledgeBase = (kb: KnowledgeBase) => {

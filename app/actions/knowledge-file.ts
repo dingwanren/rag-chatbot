@@ -99,7 +99,7 @@ export async function uploadKnowledgeFile(
       // 处理失败不影响上传流程，仅记录日志
     }
 
-    revalidatePath(`/knowledge-base/${knowledgeBaseId}`)
+    revalidatePath(`/knowledge-bases/${knowledgeBaseId}`)
 
     return { data: insertedFile, error: null }
   } catch (e) {
@@ -154,7 +154,7 @@ export async function getFiles(knowledgeBaseId: string) {
 }
 
 /**
- * 删除文件（Storage + 数据库）
+ * 删除文件（Storage + 数据库 + Pinecone 向量）
  */
 export async function deleteKnowledgeFile(fileId: string): Promise<{ success: boolean; error?: Error }> {
   try {
@@ -222,7 +222,17 @@ export async function deleteKnowledgeFile(fileId: string): Promise<{ success: bo
       throw new Error(`删除数据库记录失败：${dbError.message}`)
     }
 
-    revalidatePath(`/knowledge-base/${file.knowledge_base_id}`)
+    // 6️⃣ 删除 Pinecone 中的向量
+    try {
+      const { deletePineconeVectors } = await import('@/lib/pinecone')
+      await deletePineconeVectors(fileId)
+      console.log('Pinecone vectors deleted for fileId:', fileId)
+    } catch (pineconeError) {
+      // Pinecone 删除失败不影响整体流程，仅记录日志
+      console.error('Pinecone delete error:', pineconeError)
+    }
+
+    revalidatePath(`/knowledge-bases/${file.knowledge_base_id}`)
 
     return { success: true }
   } catch (e) {
