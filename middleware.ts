@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 /**
  * Next.js Middleware for Supabase Auth
- * 
+ *
  * 功能：
  * 1. 未登录用户访问受保护页面 → 重定向到 /login
  * 2. 已登录用户访问 /login 或 /register → 重定向到 /
@@ -15,6 +15,12 @@ export async function middleware(request: NextRequest) {
   })
 
   const { pathname } = request.nextUrl
+
+  // 🛡️ 生产环境禁止访问测试页面
+  const isTestPath = pathname.startsWith('/test-') || pathname.includes('/debug')
+  if (isTestPath && process.env.NODE_ENV === 'production') {
+    return NextResponse.redirect(new URL('/404', request.url))
+  }
 
   // API 和静态资源（跳过鉴权）
   const skipPaths = ['/api', '/_next', '/static', '/favicon.ico']

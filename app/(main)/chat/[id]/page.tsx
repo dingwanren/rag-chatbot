@@ -7,6 +7,7 @@ import { Flex, Avatar, Spin, message } from 'antd'
 import { UserOutlined, RobotOutlined } from '@ant-design/icons'
 import { ChatHeader } from '@/components/chat/ChatHeader'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
+import { UsageIndicator } from '@/components/chat/UsageIndicator'
 import { useMessages, useSendMessage } from '@/hooks/useChat'
 import { getChat } from '@/app/actions/chat'
 import { getKnowledgeBase } from '@/app/actions/knowledge-base'
@@ -120,11 +121,62 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
 
     try {
       await sendStreamingMessage({ chatId, content: messageText })
-    } catch (error) {
-      console.error('Send message error:', error)
-      message.error('发送消息失败')
+    } catch (error: any) {
+      // Hook 内部已处理日志，这里只负责 UI 提示
+      
+      // 限额超限 - 显示详细友好的提示
+      if (error.code === 'QUOTA_EXCEEDED') {
+        const details = error.details
+        let description = '您的今日请求次数或 token 额度已用完'
+        
+        if (details) {
+          description = `当前使用：${details.current}/${details.limit}，将于 ${details.resetTime} 自动恢复`
+        }
+        
+        message.open({
+          type: 'warning',
+          content: '今日额度已用完',
+          description: (
+            <div>
+              <p className="mb-2">{error.message || description}</p>
+              {details && (
+                <div className="text-xs text-gray-600">
+                  <p>💡 提示：</p>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    <li>额度将于明日 0 点自动恢复</li>
+                    <li>当前账户等级：<strong>{details.plan}</strong></li>
+                    <li>超限类型：{details.type === 'requests' ? '请求次数' : 'Token 数量'}</li>
+                  </ul>
+                </div>
+              )}
+              <p className="mt-2 text-sm font-medium">
+                需要更多额度？请联系管理员升级账户计划
+              </p>
+            </div>
+          ),
+          duration: 8,
+        })
+        return
+      }
+      
+      // 未授权 - 跳转登录
+      if (error.code === 'UNAUTHORIZED' || error.status === 401) {
+        message.open({
+          type: 'error',
+          content: '请先登录',
+          description: '您需要先登录才能发送消息',
+          duration: 3,
+        })
+        setTimeout(() => {
+          router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))
+        }, 1000)
+        return
+      }
+      
+      // 其他错误 - 简单提示
+      message.error(error.message || '发送消息失败，请稍后重试')
     }
-  }, [chatId, chatInfo, sendStreamingMessage])
+  }, [chatId, chatInfo, sendStreamingMessage, router])
 
   if (!isMounted) {
     return (
@@ -151,6 +203,10 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
           className="flex-1 overflow-y-auto"
           autoScroll
         />
+      </div>
+      {/* 限额使用情况显示 */}
+      <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
+        <UsageIndicator />
       </div>
       <Sender
         placeholder={chatInfo?.mode === 'rag' ? '输入问题，基于知识库获取答案...' : '输入消息...'}

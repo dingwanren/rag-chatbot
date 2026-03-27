@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { askQuestion } from '@/lib/rag'
+import { getUserPlan, checkAndUpdateLimits, recordUsage } from '@/lib/quota'
+import { createQuotaError, createUnauthorizedError, createInternalError } from '@/lib/api-errors'
 import type { Message } from '@/lib/supabase/types'
 
 // 节流间隔（毫秒）- 避免频繁更新数据库
@@ -78,21 +80,135 @@ export async function POST(req: Request) {
     
     console.log('[chat-stream] Chat info:', { chatId, knowledgeBaseId: chat.knowledge_base_id })
 
-    // 如果没有关联知识库，使用普通回答
+    // 如果没有关联知识库，使用普通 AI 回答（不调用 RAG）
     if (!chat.knowledge_base_id) {
-      console.error('[chat-stream] Chat has no knowledge base:', chatId)
-      return new Response(JSON.stringify({ error: 'No knowledge base associated' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
+      console.log('[chat-stream] No knowledge base, using normal chat')
+
+      // 估算 token
+      const estimatedTokens = Math.ceil(userContent.length / 4)
+
+      // 获取用户等级并检查限额
+      const plan = await getUserPlan(user.id)
+      if (plan !== 'super') {
+        const limitCheck = await checkAndUpdateLimits(user.id, plan, estimatedTokens)
+        if (!limitCheck.success) {
+          // 使用结构化错误响应
+          return createQuotaError(limitCheck.error, limitCheck.details)
+        }
+      }
+      
+      // 调用普通 AI 对话（使用 DeepSeek）
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: 'You are a helpful assistant.' },
+            { role: 'user', content: userContent },
+          ],
+          stream: false,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('AI API request failed')
+      }
+
+      const data = await response.json()
+      const answer = data.choices?.[0]?.message?.content || '抱歉，我无法回答您的问题。'
+      
+      // 获取实际 token 使用量
+      const usage = data.usage || {}
+      const promptTokens = usage.prompt_tokens ?? estimatedTokens
+      const completionTokens = usage.completion_tokens ?? 0
+      const totalTokens = usage.total_tokens ?? promptTokens + completionTokens
+
+      // 记录 usage（普通模式不需要更新限额，因为已经在前面预估时更新过了）
+      await recordUsage(user.id, chatId, 'deepseek-chat', promptTokens, completionTokens, totalTokens)
+
+      // 创建流式响应
+      const stream = new ReadableStream({
+        async start(controller) {
+          const encoder = new TextEncoder()
+          let accumulatedContent = ''
+
+          try {
+            for (let i = 0; i < answer.length; i += 50) {
+              const chunk = answer.slice(i, i + 50)
+              accumulatedContent += chunk
+
+              controller.enqueue(
+                encoder.encode(JSON.stringify({ chunk, content: accumulatedContent }) + '\n')
+              )
+
+              await new Promise(resolve => setTimeout(resolve, 50))
+            }
+
+            await supabase
+              .from('messages')
+              .update({ content: answer, status: 'completed' })
+              .eq('id', messageId)
+
+            controller.enqueue(
+              encoder.encode(JSON.stringify({ done: true, content: answer }) + '\n')
+            )
+          } catch (error) {
+            console.error('Normal chat streaming error:', error)
+            await supabase
+              .from('messages')
+              .update({ content: accumulatedContent || '生成回答时出现错误', status: 'completed' })
+              .eq('id', messageId)
+
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({ error: error instanceof Error ? error.message : 'Streaming failed', content: accumulatedContent || '生成回答时出现错误' }) + '\n'
+              )
+            )
+          } finally {
+            controller.close()
+          }
+        },
+      })
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
       })
     }
 
     console.log('[chat-stream] Calling askQuestion with:', { query: userContent.substring(0, 50), knowledgeBaseId: chat.knowledge_base_id, userId: user.id })
 
+    // 估算 token
+    const estimatedTokens = Math.ceil(userContent.length / 4)
+
+    // 获取用户等级并检查限额
+    const plan = await getUserPlan(user.id)
+    if (plan !== 'super') {
+      const limitCheck = await checkAndUpdateLimits(user.id, plan, estimatedTokens)
+      if (!limitCheck.success) {
+        // 使用结构化错误响应
+        return createQuotaError(limitCheck.error, limitCheck.details)
+      }
+    }
+
     // 调用 RAG 问答（传入 userId 用于安全过滤）
     const answer = await askQuestion(userContent, chat.knowledge_base_id, user.id)
 
     console.log('[chat-stream] Got answer, length:', answer.length)
+
+    // 记录 usage（RAG 模式的 token 使用量由 askQuestion 内部估算）
+    // 注意：askQuestion 使用的是阿里百炼，不返回详细 token 信息
+    // 这里简单估算：输入 + 输出
+    const outputTokens = Math.ceil(answer.length / 4)
+    const totalTokens = estimatedTokens + outputTokens
+    await recordUsage(user.id, chatId, 'qwen-plus', estimatedTokens, outputTokens, totalTokens)
 
     // 创建 ReadableStream 用于响应（模拟流式效果）
     const stream = new ReadableStream({

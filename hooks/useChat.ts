@@ -13,6 +13,29 @@ import { getKnowledgeBases } from '@/app/actions/knowledge-base'
 import type { Chat, Message } from '@/lib/supabase/types'
 
 /**
+ * 解析 API 错误响应
+ */
+function parseApiError(errorText: string): {
+  message: string
+  code?: string
+  details?: any
+} {
+  try {
+    const err = JSON.parse(errorText)
+    return {
+      message: err.message || '请求失败',
+      code: err.code,
+      details: err.details,
+    }
+  } catch {
+    // 解析失败，返回原始文本
+    return {
+      message: errorText || '请求失败',
+    }
+  }
+}
+
+/**
  * Hook: 获取聊天列表
  */
 export function useChatList() {
@@ -83,16 +106,12 @@ export function useSendMessage() {
 
   const mutation = useMutation({
     mutationFn: async ({ chatId, content }: { chatId: string; content: string }) => {
-      console.log('[useSendMessage] Starting to send message:', { chatId, content })
-      
       // 1. 发送消息（创建 user + assistant 占位）
       const { assistantMessageId } = await sendStreamingMessage(chatId, content)
-      console.log('[useSendMessage] Got assistantMessageId:', assistantMessageId)
 
       // 2. 开始流式请求
       const payload = { chatId, messageId: assistantMessageId }
-      console.log('[useSendMessage] Fetch payload:', payload)
-      
+
       const response = await fetch('/api/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -101,8 +120,26 @@ export function useSendMessage() {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('[useSendMessage] Streaming response error:', response.status, errorText)
-        throw new Error(`Streaming failed: ${response.status} ${errorText}`)
+        
+        // 解析错误信息
+        const { message, code, details } = parseApiError(errorText)
+        
+        // 错误分级日志 - 生产环境关键优化！
+        if (response.status >= 500) {
+          // 系统错误：console.error
+          console.error('[API Error]', response.status, message, { code, details })
+        } else if (process.env.NODE_ENV === 'development') {
+          // 开发环境：业务错误用 console.warn（可选）
+          console.warn('[Business Limit]', response.status, message, { code, details })
+        }
+        // 生产环境 + 业务错误：不打印任何日志 ✅
+
+        // 抛出错误（包含完整信息）
+        const error = new Error(message) as any
+        error.code = code
+        error.status = response.status
+        error.details = details
+        throw error
       }
 
       if (!response.body) {
