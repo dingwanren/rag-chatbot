@@ -8,6 +8,8 @@ import {
   getChatList,
   deleteChat,
   renameChat,
+  deleteMessage,
+  updateMessage,
 } from '@/app/actions/chat'
 import { getKnowledgeBases } from '@/app/actions/knowledge-base'
 import type { Chat, Message } from '@/lib/supabase/types'
@@ -33,6 +35,30 @@ function parseApiError(errorText: string): {
       message: errorText || '请求失败',
     }
   }
+}
+
+/**
+ * 生成友好的错误消息内容
+ */
+function formatErrorMessage(code?: string, message?: string, details?: any): string {
+  // 限额超限
+  if (code === 'QUOTA_EXCEEDED') {
+    const detailText = details ? `（当前：${details.current}/${details.limit}）` : ''
+    return `⚠️ 今日额度已用完${detailText}\n\n${message || '请明天再试或升级账户计划'}`
+  }
+  
+  // 未授权
+  if (code === 'UNAUTHORIZED') {
+    return `⚠️ 请先登录\n\n${message || '登录后继续使用'}`
+  }
+  
+  // 禁止访问
+  if (code === 'FORBIDDEN') {
+    return `⚠️ 无权访问\n\n${message || '您没有权限执行此操作'}`
+  }
+  
+  // 其他错误
+  return `⚠️ ${message || '发生错误，请稍后重试'}`
 }
 
 /**
@@ -99,83 +125,102 @@ export function useCreateChat() {
 }
 
 /**
- * Hook: 发送消息并处理流式响应
+ * Hook: 发送消息并处理流式响应（产品级体验）
  */
 export function useSendMessage() {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
     mutationFn: async ({ chatId, content }: { chatId: string; content: string }) => {
-      // 1. 发送消息（创建 user + assistant 占位）
+      // 1. 发送消息（创建 user + assistant 占位，status: 'loading'）
       const { assistantMessageId } = await sendStreamingMessage(chatId, content)
 
       // 2. 开始流式请求
       const payload = { chatId, messageId: assistantMessageId }
 
-      const response = await fetch('/api/chat-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      try {
+        const response = await fetch('/api/chat-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        
-        // 解析错误信息
-        const { message, code, details } = parseApiError(errorText)
-        
-        // 错误分级日志 - 生产环境关键优化！
-        if (response.status >= 500) {
-          // 系统错误：console.error
-          console.error('[API Error]', response.status, message, { code, details })
-        } else if (process.env.NODE_ENV === 'development') {
-          // 开发环境：业务错误用 console.warn（可选）
-          console.warn('[Business Limit]', response.status, message, { code, details })
+        if (!response.ok) {
+          const errorText = await response.text()
+          const { message, code, details } = parseApiError(errorText)
+          
+          // 🎯 关键：失败时更新为错误消息（不删除！）
+          const errorMessage = formatErrorMessage(code, message, details)
+          await updateMessage(assistantMessageId, errorMessage, 'error')
+          
+          // 错误分级日志
+          if (response.status >= 500) {
+            console.error('[API Error]', response.status, message, { code, details })
+          } else if (process.env.NODE_ENV === 'development') {
+            console.warn('[Business Limit]', response.status, message, { code, details })
+          }
+          
+          // 抛出错误（包含完整信息）
+          const error = new Error(message) as any
+          error.code = code
+          error.status = response.status
+          error.details = details
+          throw error
         }
-        // 生产环境 + 业务错误：不打印任何日志 ✅
 
-        // 抛出错误（包含完整信息）
-        const error = new Error(message) as any
-        error.code = code
-        error.status = response.status
-        error.details = details
-        throw error
-      }
+        if (!response.body) {
+          throw new Error('No response body')
+        }
 
-      if (!response.body) {
-        throw new Error('No response body')
-      }
+        // 3. 处理流式响应
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
 
-      // 3. 处理流式响应
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
+        return {
+          assistantMessageId,
+          stream: async function* () {
+            let accumulatedContent = ''
+            
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
 
-      return {
-        assistantMessageId,
-        stream: async function* () {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+              const text = decoder.decode(value)
+              const lines = text.split('\n').filter(line => line.trim())
 
-            const text = decoder.decode(value)
-            const lines = text.split('\n').filter(line => line.trim())
-
-            for (const line of lines) {
-              try {
-                const data = JSON.parse(line)
-                if (data.done) {
-                  yield { done: true, content: data.content }
-                } else if (data.error) {
-                  yield { error: data.error, content: data.content }
-                } else {
-                  yield { chunk: data.chunk, content: data.content }
+              for (const line of lines) {
+                try {
+                  const data = JSON.parse(line)
+                  if (data.done) {
+                    // 流完成：更新为 success 状态
+                    await updateMessage(assistantMessageId, data.content, 'success')
+                    yield { done: true, content: data.content }
+                  } else if (data.error) {
+                    // 流中出错：更新为 error 状态
+                    const errorMsg = formatErrorMessage(undefined, data.error, undefined)
+                    await updateMessage(assistantMessageId, errorMsg, 'error')
+                    yield { error: data.error, content: data.content }
+                  } else {
+                    // 流式更新：保持 loading 状态
+                    accumulatedContent = data.content
+                    yield { chunk: data.chunk, content: accumulatedContent }
+                  }
+                } catch {
+                  // 忽略解析错误
                 }
-              } catch {
-                // 忽略解析错误
               }
             }
-          }
-        },
+          },
+        }
+      } catch (error) {
+        // 网络错误或其他异常：更新为 error 状态
+        const errorMsg = formatErrorMessage(
+          'INTERNAL_ERROR',
+          error instanceof Error ? error.message : '未知错误',
+          undefined
+        )
+        await updateMessage(assistantMessageId, errorMsg, 'error')
+        throw error
       }
     },
     onSuccess: () => {

@@ -84,15 +84,32 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
 
   // 转换数据库消息为 Bubble.List 格式
   const bubbleItems = useMemo(() => {
-    return (dbMessages ?? []).map((message) => {
-      const role = message.role === 'user' ? 'user' : 'ai'
-      return {
-        key: message.id || getKey(),
-        role,
-        content: message.content,
-        placement: role === 'user' ? ('end' as const) : ('start' as const),
-      }
-    })
+    return (dbMessages ?? [])
+      // 🎯 过滤掉空内容的消息（兜底逻辑）
+      .filter((msg) => msg.content && msg.content.trim() !== '')
+      .map((message) => {
+        const role = message.role === 'user' ? 'user' : 'ai'
+        
+        // 🎯 检查是否为 loading 状态
+        const isLoading = message.status === 'streaming' && message.content === '正在思考...'
+        const isError = message.content?.startsWith('⚠️')
+        
+        return {
+          key: message.id || getKey(),
+          role,
+          content: message.content,
+          placement: role === 'user' ? ('end' as const) : ('start' as const),
+          // 根据状态设置样式
+          variant: isError ? ('block' as const) : undefined,
+          styles: {
+            content: isError 
+              ? { backgroundColor: '#fff2f0', border: '1px solid #ffccc7' } // 错误样式
+              : isLoading 
+                ? { backgroundColor: '#f0f0f0', opacity: 0.8 } // loading 样式
+                : undefined,
+          },
+        }
+      })
   }, [dbMessages])
 
   const isLoading = isPending || isLoadingMessages || !isMounted

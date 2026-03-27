@@ -130,10 +130,12 @@ export async function getMessages(chatId: string) {
 /**
  * 发送消息（创建 user message 和 assistant message 占位）
  * 返回 assistant message 的 id 用于后续 streaming 更新
+ * 
+ * ⚠️ 注意：assistant 消息初始状态为 'loading'，内容为"正在思考..."
  */
 export async function sendMessage(chatId: string, content: string) {
   console.log('[sendMessage] Called with:', { chatId, content })
-  
+
   const supabase = await createClient()
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -165,12 +167,23 @@ export async function sendMessage(chatId: string, content: string) {
     // RPC 成功，返回 assistant message id
     const assistantMessageId = rpcData[0].assistant_message_id
     console.log('[sendMessage] RPC success, assistantMessageId:', assistantMessageId)
+    
+    // 更新为 loading 状态
+    await supabase
+      .from('messages')
+      .update({ 
+        content: '正在思考...',
+        status: 'streaming',
+        metadata: { loading: true }
+      })
+      .eq('id', assistantMessageId)
+    
     return { assistantMessageId, chatTitle: chat.title }
   }
 
   console.log('[sendMessage] RPC not available, using normal insert')
-  
-  // RPC 不存在，使用普通插入
+
+  // RPC 不存在，使用普通插入（带 loading 状态）
   const { data: insertData, error: insertError } = await supabase
     .from('messages')
     .insert([
@@ -183,8 +196,9 @@ export async function sendMessage(chatId: string, content: string) {
       {
         chat_id: chatId,
         role: 'assistant' as const,
-        content: '',
+        content: '正在思考...', // 🎯 显示 loading 文本
         status: 'streaming' as const,
+        metadata: { loading: true } as any, // 标记为 loading 状态
       },
     ])
     .select('id')
@@ -198,12 +212,39 @@ export async function sendMessage(chatId: string, content: string) {
   const assistantMessageId = insertData[1]?.id
   console.log('[sendMessage] Insert success, assistantMessageId:', assistantMessageId)
   console.log('[sendMessage] insertData:', insertData)
-  
+
   return { assistantMessageId, chatTitle: chat.title }
 }
 
 /**
- * 更新 assistant message 的内容（streaming 中）
+ * 删除消息（用于清理失败的占位消息）
+ */
+export async function deleteMessage(messageId: string) {
+  const supabase = await createClient()
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    throw new Error('未授权')
+  }
+
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId)
+
+  if (error) {
+    console.error('[deleteMessage] Error:', error)
+    throw new Error(`删除消息失败：${error.message}`)
+  }
+
+  console.log('[deleteMessage] Success, messageId:', messageId)
+}
+
+/**
+ * 更新 assistant message 的内容和状态
+ * @param messageId - 消息 ID
+ * @param content - 消息内容
+ * @param status - 消息状态（'streaming' 或 'completed'）
  */
 export async function updateMessage(
   messageId: string,
@@ -219,7 +260,11 @@ export async function updateMessage(
 
   const { error } = await supabase
     .from('messages')
-    .update({ content, status })
+    .update({ 
+      content, 
+      status,
+      metadata: { loading: false } as any, // 移除 loading 标记
+    })
     .eq('id', messageId)
 
   if (error) {
