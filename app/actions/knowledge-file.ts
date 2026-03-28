@@ -4,14 +4,39 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { KnowledgeFile } from '@/types'
 import { processFile } from '@/lib/process-file'
+import { analyzePdf } from '@/lib/pdf-analyzer'
+
+/**
+ * PDF 质量检测结果
+ */
+export interface PdfQualityCheckResult {
+  status: 'success' | 'warning' | 'error'
+  message?: string
+  textLength?: number
+}
+
+/**
+ * 分析 PDF 文件质量（Server Action）
+ */
+export async function analyzePdfAction(file: File): Promise<PdfQualityCheckResult> {
+  return analyzePdf(file)
+}
 
 /**
  * 上传文件到 Supabase Storage 并写入数据库
+ * @param knowledgeBaseId - 知识库 ID
+ * @param file - 文件
+ * @param skipQualityCheck - 是否跳过质量检测（用于用户确认 warning 后）
  */
 export async function uploadKnowledgeFile(
   knowledgeBaseId: string,
-  file: File
-): Promise<{ data: KnowledgeFile | null; error: Error | null }> {
+  file: File,
+  skipQualityCheck: boolean = false
+): Promise<{ 
+  data: KnowledgeFile | null
+  error: Error | null
+  qualityCheck?: PdfQualityCheckResult
+}> {
   try {
     const supabase = await createClient()
 
@@ -26,7 +51,33 @@ export async function uploadKnowledgeFile(
       return { data: null, error: new Error('文件和信息不能为空') }
     }
 
-    // 验证知识库属于当前用户
+    // 🎯 1. PDF 质量检测（除非跳过）
+    let qualityCheck: PdfQualityCheckResult | undefined
+    
+    if (!skipQualityCheck && file.type === 'application/pdf') {
+      qualityCheck = await analyzePdf(file)
+      console.log('[Upload] PDF 质量检测结果:', qualityCheck)
+
+      // 如果检测失败，直接返回
+      if (qualityCheck.status === 'error') {
+        return {
+          data: null,
+          error: new Error(qualityCheck.message),
+          qualityCheck,
+        }
+      }
+
+      // 如果是 warning，返回给前端让用户决定
+      if (qualityCheck.status === 'warning') {
+        return {
+          data: null,
+          error: new Error('warning'), // 特殊标记
+          qualityCheck,
+        }
+      }
+    }
+
+    // 2. 验证知识库属于当前用户
     const { data: kb, error: kbError } = await supabase
       .from('knowledge_bases')
       .select('id, user_id')
@@ -101,7 +152,11 @@ export async function uploadKnowledgeFile(
 
     revalidatePath(`/knowledge-bases/${knowledgeBaseId}`)
 
-    return { data: insertedFile, error: null }
+    return { 
+      data: insertedFile, 
+      error: null,
+      qualityCheck,
+    }
   } catch (e) {
     console.error('upload error:', e)
     return { data: null, error: new Error(`上传失败：${e instanceof Error ? e.message : '未知错误'}`) }

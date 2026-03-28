@@ -1,15 +1,43 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
+import { CreateChatModal } from '@/components/chat/CreateChatModal'
+import { useCreateChat } from '@/hooks/useChat'
 
 export default function MainLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter()
+  const { createChat, isPending: isCreating } = useCreateChat()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+
+  // 监听全局事件（从侧边栏触发）
+  useEffect(() => {
+    const handleOpenModal = () => {
+      setShowModal(true)
+    }
+
+    window.addEventListener('openCreateChatModal', handleOpenModal)
+    return () => {
+      window.removeEventListener('openCreateChatModal', handleOpenModal)
+    }
+  }, [])
+
+  const handleCreateChat = async (data: { title: string; mode: 'chat' | 'rag'; knowledgeBaseId?: string }) => {
+    try {
+      const { id: chatId } = await createChat(data)
+      setShowModal(false)
+      router.push(`/chat/${chatId}`)
+    } catch (error) {
+      console.error('Create chat error:', error)
+    }
+  }
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed(prev => !prev)
@@ -48,6 +76,13 @@ export default function MainLayout({
       <main className="flex-1 flex flex-col overflow-hidden pt-14 md:pt-0">
         {children}
       </main>
+
+      {/* 创建聊天弹窗（全局可用） */}
+      <CreateChatModal
+        open={showModal}
+        onCreate={handleCreateChat}
+        onCancel={() => setShowModal(false)}
+      />
     </div>
   )
 }
