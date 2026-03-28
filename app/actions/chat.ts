@@ -91,7 +91,7 @@ export async function getChatList() {
 }
 
 /**
- * 获取单个聊天的消息列表（按 created_at 升序）
+ * 获取单个聊天的消息列表（按 seq 升序）
  * 依赖 RLS：通过 chat_id 关联，只返回当前用户的消息
  */
 export async function getMessages(chatId: string) {
@@ -114,11 +114,12 @@ export async function getMessages(chatId: string) {
     throw new Error('聊天不存在或无权限')
   }
 
+  // 🎯 按 seq 升序排序，确保消息顺序正确
   const { data, error } = await supabase
     .from('messages')
-    .select('id, chat_id, role, content, status, metadata, created_at')
+    .select('id, chat_id, role, content, status, metadata, created_at, seq')
     .eq('chat_id', chatId)
-    .order('created_at', { ascending: true })
+    .order('seq', { ascending: true })
 
   if (error) {
     throw new Error(`获取消息失败：${error.message}`)
@@ -157,6 +158,17 @@ export async function sendMessage(chatId: string, content: string) {
     throw new Error('聊天不存在或无权限')
   }
 
+  // 🎯 获取当前聊天的最大 seq（用于保证消息顺序）
+  const { data: maxSeqData } = await supabase
+    .from('messages')
+    .select('seq')
+    .eq('chat_id', chatId)
+    .order('seq', { ascending: false })
+    .limit(1)
+    .single()
+
+  const nextSeq = (maxSeqData?.seq ?? 0) + 1
+
   // 尝试调用 RPC 函数（如果存在）
   const { data: rpcData, error: rpcError } = await supabase.rpc('create_message_pair', {
     p_chat_id: chatId,
@@ -167,23 +179,31 @@ export async function sendMessage(chatId: string, content: string) {
     // RPC 成功，返回 assistant message id
     const assistantMessageId = rpcData[0].assistant_message_id
     console.log('[sendMessage] RPC success, assistantMessageId:', assistantMessageId)
-    
-    // 更新为 loading 状态
+
+    // 更新 user 和 assistant 消息的 seq
+    await supabase
+      .from('messages')
+      .update({ seq: nextSeq })
+      .eq('chat_id', chatId)
+      .eq('role', 'user')
+      .is('metadata', null) // 最新插入的 user 消息
+
     await supabase
       .from('messages')
       .update({ 
+        seq: nextSeq + 1,
         content: '正在思考...',
         status: 'streaming',
         metadata: { loading: true }
       })
       .eq('id', assistantMessageId)
-    
+
     return { assistantMessageId, chatTitle: chat.title }
   }
 
   console.log('[sendMessage] RPC not available, using normal insert')
 
-  // RPC 不存在，使用普通插入（带 loading 状态）
+  // RPC 不存在，使用普通插入（带 seq）
   const { data: insertData, error: insertError } = await supabase
     .from('messages')
     .insert([
@@ -192,6 +212,7 @@ export async function sendMessage(chatId: string, content: string) {
         role: 'user' as const,
         content,
         status: 'completed' as const,
+        seq: nextSeq,
       },
       {
         chat_id: chatId,
@@ -199,6 +220,7 @@ export async function sendMessage(chatId: string, content: string) {
         content: '正在思考...', // 🎯 显示 loading 文本
         status: 'streaming' as const,
         metadata: { loading: true } as any, // 标记为 loading 状态
+        seq: nextSeq + 1,
       },
     ])
     .select('id')

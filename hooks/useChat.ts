@@ -30,7 +30,6 @@ function parseApiError(errorText: string): {
       details: err.details,
     }
   } catch {
-    // 解析失败，返回原始文本
     return {
       message: errorText || '请求失败',
     }
@@ -41,29 +40,22 @@ function parseApiError(errorText: string): {
  * 生成友好的错误消息内容
  */
 function formatErrorMessage(code?: string, message?: string, details?: any): string {
-  // 限额超限
   if (code === 'QUOTA_EXCEEDED') {
     const detailText = details ? `（当前：${details.current}/${details.limit}）` : ''
     return `⚠️ 今日额度已用完${detailText}\n\n${message || '请明天再试或升级账户计划'}`
   }
-  
-  // 未授权
+
   if (code === 'UNAUTHORIZED') {
     return `⚠️ 请先登录\n\n${message || '登录后继续使用'}`
   }
-  
-  // 禁止访问
+
   if (code === 'FORBIDDEN') {
     return `⚠️ 无权访问\n\n${message || '您没有权限执行此操作'}`
   }
-  
-  // 其他错误
+
   return `⚠️ ${message || '发生错误，请稍后重试'}`
 }
 
-/**
- * Hook: 获取聊天列表
- */
 export function useChatList() {
   const { data, isLoading, error, refetch } = useQuery<Chat[]>({
     queryKey: ['chatList'],
@@ -79,15 +71,14 @@ export function useChatList() {
   }
 }
 
-/**
- * Hook: 获取单个聊天的消息
- */
 export function useMessages(chatId: string | null) {
   const { data, isLoading, error, refetch } = useQuery<Message[]>({
     queryKey: ['messages', chatId],
     queryFn: () => chatId ? getMessages(chatId) : Promise.resolve([]),
     enabled: !!chatId,
     retry: 1,
+    // 🎯 关键：按 created_at 升序排序，确保消息顺序正确
+    staleTime: 1000, // 1 秒内不重复请求
   })
 
   return {
@@ -98,9 +89,6 @@ export function useMessages(chatId: string | null) {
   }
 }
 
-/**
- * Hook: 创建聊天
- */
 export function useCreateChat() {
   const queryClient = useQueryClient()
 
@@ -125,17 +113,16 @@ export function useCreateChat() {
 }
 
 /**
- * Hook: 发送消息并处理流式响应（产品级体验）
+ * 🎯 优化的 Hook：发送消息并实时流式更新（不依赖数据库轮询）
  */
 export function useSendMessage() {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
     mutationFn: async ({ chatId, content }: { chatId: string; content: string }) => {
-      // 1. 发送消息（创建 user + assistant 占位，status: 'loading'）
+      // 1. 发送消息（创建 user + assistant 占位）
       const { assistantMessageId } = await sendStreamingMessage(chatId, content)
 
-      // 2. 开始流式请求
       const payload = { chatId, messageId: assistantMessageId }
 
       try {
@@ -148,19 +135,14 @@ export function useSendMessage() {
         if (!response.ok) {
           const errorText = await response.text()
           const { message, code, details } = parseApiError(errorText)
-          
-          // 🎯 关键：失败时更新为错误消息（不删除！）
+
           const errorMessage = formatErrorMessage(code, message, details)
-          await updateMessage(assistantMessageId, errorMessage, 'error')
-          
-          // 错误分级日志
+          await updateMessage(assistantMessageId, errorMessage, 'completed')
+
           if (response.status >= 500) {
             console.error('[API Error]', response.status, message, { code, details })
-          } else if (process.env.NODE_ENV === 'development') {
-            console.warn('[Business Limit]', response.status, message, { code, details })
           }
-          
-          // 抛出错误（包含完整信息）
+
           const error = new Error(message) as any
           error.code = code
           error.status = response.status
@@ -172,7 +154,6 @@ export function useSendMessage() {
           throw new Error('No response body')
         }
 
-        // 3. 处理流式响应
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
 
@@ -180,7 +161,8 @@ export function useSendMessage() {
           assistantMessageId,
           stream: async function* () {
             let accumulatedContent = ''
-            
+            let lastUsage: { daily_tokens: number; daily_requests: number } | undefined
+
             while (true) {
               const { done, value } = await reader.read()
               if (done) break
@@ -191,21 +173,36 @@ export function useSendMessage() {
               for (const line of lines) {
                 try {
                   const data = JSON.parse(line)
+                  
                   if (data.done) {
-                    // 流完成：更新为 success 状态
-                    await updateMessage(assistantMessageId, data.content, 'success')
-                    yield { done: true, content: data.content }
+                    // 流完成：更新数据库为 completed 状态
+                    await updateMessage(assistantMessageId, data.content, 'completed')
+                    
+                    lastUsage = data.usage
+                    yield {
+                      done: true,
+                      content: data.content,
+                      usage: data.usage,
+                    }
                   } else if (data.error) {
-                    // 流中出错：更新为 error 状态
                     const errorMsg = formatErrorMessage(undefined, data.error, undefined)
-                    await updateMessage(assistantMessageId, errorMsg, 'error')
-                    yield { error: data.error, content: data.content }
+                    await updateMessage(assistantMessageId, errorMsg, 'completed')
+                    yield {
+                      error: data.error,
+                      content: data.content,
+                      usage: data.usage,
+                    }
                   } else {
-                    // 流式更新：保持 loading 状态
+                    // 🎯 流式更新：只更新本地状态，不更新数据库（避免频繁 IO）
                     accumulatedContent = data.content
-                    yield { chunk: data.chunk, content: accumulatedContent }
+                    yield { 
+                      chunk: data.chunk, 
+                      content: accumulatedContent,
+                      // 🎯 返回当前内容，让前端实时更新
+                      streamingContent: accumulatedContent,
+                    }
                   }
-                } catch {
+                } catch (e) {
                   // 忽略解析错误
                 }
               }
@@ -213,19 +210,19 @@ export function useSendMessage() {
           },
         }
       } catch (error) {
-        // 网络错误或其他异常：更新为 error 状态
         const errorMsg = formatErrorMessage(
           'INTERNAL_ERROR',
           error instanceof Error ? error.message : '未知错误',
           undefined
         )
-        await updateMessage(assistantMessageId, errorMsg, 'error')
+        await updateMessage(assistantMessageId, errorMsg, 'completed')
         throw error
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['messages'] })
-      queryClient.invalidateQueries({ queryKey: ['chatList'] })
+      // 🎯 流式完成后不立即刷新，避免覆盖本地完整内容
+      // 数据库更新由 API 端完成，前端通过用户刷新或下次进入时同步
+      console.log('[useSendMessage] Mutation completed, skipping DB refresh to preserve local state')
     },
   })
 
@@ -236,9 +233,6 @@ export function useSendMessage() {
   }
 }
 
-/**
- * Hook: 重命名聊天
- */
 export function useRenameChat() {
   const queryClient = useQueryClient()
 
@@ -259,9 +253,6 @@ export function useRenameChat() {
   }
 }
 
-/**
- * Hook: 删除聊天
- */
 export function useDeleteChat() {
   const queryClient = useQueryClient()
 
@@ -282,9 +273,6 @@ export function useDeleteChat() {
   }
 }
 
-/**
- * Hook: 获取知识库列表
- */
 export function useKnowledgeBases() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['knowledgeBases'],

@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bubble, Sender, type BubbleListProps } from '@ant-design/x'
-import { Flex, Avatar, Spin, message } from 'antd'
+import { Bubble, Sender, Actions, type BubbleListProps } from '@ant-design/x'
+import { Avatar, Spin, message } from 'antd'
 import { UserOutlined, RobotOutlined } from '@ant-design/icons'
 import { ChatHeader } from '@/components/chat/ChatHeader'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
@@ -20,6 +20,17 @@ interface ChatDetailPageProps {
 let id = 0
 const getKey = () => `bubble_${id++}`
 
+interface BubbleItem {
+  key: string
+  role: 'user' | 'ai'
+  content: string
+  placement: 'start' | 'end'
+  variant?: 'filled' | 'outlined' | 'shadow' | 'borderless' | 'block'
+  styles?: {
+    content?: React.CSSProperties
+  }
+}
+
 export default function ChatDetailPage({ params }: ChatDetailPageProps) {
   const router = useRouter()
   const [chatId, setChatId] = useState<string | null>(null)
@@ -29,6 +40,17 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
   const [input, setInput] = useState('')
   const [hasSentPending, setHasSentPending] = useState(false)
   const [loadingChat, setLoadingChat] = useState(true)
+
+  // 🎯 Token 使用量状态
+  const [usage, setUsage] = useState<{
+    daily_tokens: number
+    daily_requests: number
+  } | null>(null)
+
+  // 🎯 本地消息列表状态（用于实时流式更新）
+  const [localMessages, setLocalMessages] = useState<BubbleItem[]>([])
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [completedMessageId, setCompletedMessageId] = useState<string | null>(null)
 
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(chatId)
   const { sendMessage: sendStreamingMessage, isPending } = useSendMessage()
@@ -42,7 +64,6 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
         const chat = await getChat(id)
         setChatInfo(chat)
 
-        // 如果是 RAG 聊天，加载知识库名称
         if (chat.mode === 'rag' && chat.knowledge_base_id) {
           const { data: kb } = await getKnowledgeBase(chat.knowledge_base_id)
           if (kb) {
@@ -56,7 +77,6 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
         setLoadingChat(false)
       }
 
-      // 检查是否有待发送的消息
       const stored = sessionStorage.getItem(`chat-${id}-pending`)
       if (stored && !hasSentPending) {
         setPendingMessage(stored)
@@ -69,8 +89,7 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
   useEffect(() => {
     if (pendingMessage && chatId && !hasSentPending && !loadingChat) {
       setHasSentPending(true)
-
-      sendStreamingMessage({ chatId, content: pendingMessage })
+      handleSendMessage(pendingMessage)
         .catch((error) => {
           console.error('Auto-send message error:', error)
         })
@@ -78,51 +97,89 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
           setPendingMessage(null)
         })
     }
-  }, [pendingMessage, chatId, hasSentPending, sendStreamingMessage, loadingChat])
+  }, [pendingMessage, chatId, hasSentPending, loadingChat])
+
+  // 🎯 从数据库消息同步到本地（只在初始加载或完成时）
+  useEffect(() => {
+    console.log('[chat] useEffect triggered:', {
+      dbMessagesCount: dbMessages?.length ?? 0,
+      streamingMessageId,
+      completedMessageId,
+      willOverride: !completedMessageId && dbMessages && dbMessages.length > 0
+    })
+    
+    if (dbMessages && dbMessages.length > 0 && !streamingMessageId) {
+      const items = dbMessages
+        .filter((msg) => msg.content && msg.content.trim() !== '')
+        .map((msg) => {
+          const role = msg.role === 'user' ? 'user' : 'ai'
+          const isError = msg.content?.startsWith('⚠️')
+
+          return {
+            key: msg.id || getKey(),
+            role,
+            content: msg.content,
+            placement: role === 'user' ? ('end' as const) : ('start' as const),
+            variant: isError ? ('block' as const) : undefined,
+            styles: {
+              content: isError
+                ? { backgroundColor: '#fff2f0', border: '1px solid #ffccc7' }
+                : undefined,
+            },
+          }
+        })
+
+      // 🎯 只在没有完成标记时才覆盖（避免覆盖本地完整内容）
+      if (!completedMessageId) {
+        console.log('[chat] ⚠️ WARNING: Overriding local messages with DB data!')
+        setLocalMessages(items)
+      } else {
+        console.log('[chat] ✅ Protected by completedMessageId, skipping DB override')
+      }
+    }
+  }, [dbMessages, streamingMessageId, completedMessageId])
 
   const isMounted = chatId !== null && !loadingChat
 
-  // 转换数据库消息为 Bubble.List 格式
+  // 🎯 合并本地消息和数据库消息
   const bubbleItems = useMemo(() => {
-    return (dbMessages ?? [])
-      // 🎯 过滤掉空内容的消息（兜底逻辑）
-      .filter((msg) => msg.content && msg.content.trim() !== '')
-      .map((message) => {
-        const role = message.role === 'user' ? 'user' : 'ai'
-        
-        // 🎯 检查是否为 loading 状态
-        const isLoading = message.status === 'streaming' && message.content === '正在思考...'
-        const isError = message.content?.startsWith('⚠️')
-        
-        return {
-          key: message.id || getKey(),
-          role,
-          content: message.content,
-          placement: role === 'user' ? ('end' as const) : ('start' as const),
-          // 根据状态设置样式
-          variant: isError ? ('block' as const) : undefined,
-          styles: {
-            content: isError 
-              ? { backgroundColor: '#fff2f0', border: '1px solid #ffccc7' } // 错误样式
-              : isLoading 
-                ? { backgroundColor: '#f0f0f0', opacity: 0.8 } // loading 样式
-                : undefined,
-          },
-        }
-      })
-  }, [dbMessages])
+    if (streamingMessageId && localMessages.length > 0) {
+      // 如果有正在流式的消息，使用本地状态
+      return localMessages
+    }
+    return localMessages
+  }, [localMessages, streamingMessageId])
 
-  const isLoading = isPending || isLoadingMessages || !isMounted
+  const isLoading = isPending || !isMounted
+
+  // 🎯 定义操作按钮
+  const actionItems = (content: string) => [
+    {
+      key: 'copy',
+      label: '复制',
+      actionRender: () => {
+        return <Actions.Copy text={content} onCopy={() => message.success('已复制到剪贴板')} />
+      },
+    },
+  ]
 
   const memoRole = useMemo<BubbleListProps['role']>(() => ({
     ai: {
       typing: true,
       avatar: () => <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#1890ff' }} />,
       contentRender: (content) => <MarkdownContent content={content} streaming={isLoading} />,
+      // 🎯 添加复制按钮（使用 Actions.Copy 组件）
+      footer: (content) => (
+        <Actions items={actionItems(content)} onClick={() => console.log(content)} />
+      ),
     },
     user: {
       placement: 'end',
       avatar: () => <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#52c41a' }} />,
+      // 🎯 用户消息也添加复制按钮
+      footer: (content) => (
+        <Actions items={actionItems(content)} onClick={() => console.log(content)} />
+      ),
     },
   }), [isLoading])
 
@@ -130,38 +187,92 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
     if (!chatId) return
     if (!messageText.trim()) return
 
-    // 如果是 RAG 聊天但没有知识库，禁止发送
     if (chatInfo?.mode === 'rag' && !chatInfo.knowledge_base_id) {
       message.error('该聊天未绑定知识库，无法发送消息')
       return
     }
 
     try {
-      await sendStreamingMessage({ chatId, content: messageText })
+      // 🎯 1. 立即在 UI 上显示用户消息
+      const userMessage: BubbleItem = {
+        key: `user_${Date.now()}`,
+        role: 'user',
+        content: messageText,
+        placement: 'end',
+      }
+
+      setLocalMessages(prev => [...prev, userMessage])
+
+      // 🎯 2. 创建 assistant 占位消息（loading 状态）
+      const loadingMessage: BubbleItem = {
+        key: `ai_${Date.now()}`,
+        role: 'ai',
+        content: '正在思考...',
+        placement: 'start',
+        styles: {
+          content: { backgroundColor: '#f0f0f0', opacity: 0.8 },
+        },
+      }
+
+      setLocalMessages(prev => [...prev, loadingMessage])
+      setStreamingMessageId(loadingMessage.key)
+
+      // 🎯 3. 发送消息并获取流式响应
+      const result = await sendStreamingMessage({ chatId, content: messageText })
+
+      // 🎯 4. 消费流式响应并实时更新 UI
+      if (result?.stream) {
+        const streamIterator = result.stream()
+
+        for await (const chunk of streamIterator) {
+          if (chunk.streamingContent !== undefined) {
+            // 🎯 流式更新：实时更新本地状态
+            setLocalMessages(prev =>
+              prev.map(msg =>
+                msg.key === loadingMessage.key
+                  ? { ...msg, content: chunk.streamingContent }
+                  : msg
+              )
+            )
+          }
+
+          if (chunk.done && chunk.usage) {
+            setUsage(chunk.usage)
+          }
+
+          if (chunk.done || chunk.error) {
+            setStreamingMessageId(null)
+            // 🎯 标记为已完成，防止数据库同步覆盖
+            setCompletedMessageId(loadingMessage.key)
+            
+            console.log('[chat] Stream completed, message key:', loadingMessage.key)
+            console.log('[chat] Set completedMessageId to prevent DB override')
+            
+            // 🎯 延迟清除完成标记，让数据库有时间同步（延长到 10 秒）
+            setTimeout(() => {
+              console.log('[chat] Clearing completedMessageId')
+              setCompletedMessageId(null)
+            }, 10000)
+          }
+        }
+      }
     } catch (error: any) {
-      // Hook 内部已处理日志，这里只负责 UI 提示
-      
-      // 限额超限 - 显示详细友好的提示
+      setStreamingMessageId(null)
+
       if (error.code === 'QUOTA_EXCEEDED') {
         const details = error.details
-        let description = '您的今日请求次数或 token 额度已用完'
-        
-        if (details) {
-          description = `当前使用：${details.current}/${details.limit}，将于 ${details.resetTime} 自动恢复`
-        }
-        
+
         message.open({
           type: 'warning',
           content: '今日额度已用完',
           description: (
             <div>
-              <p className="mb-2">{error.message || description}</p>
+              <p className="mb-2">{error.message || '您的今日额度已用完'}</p>
               {details && (
                 <div className="text-xs text-gray-600">
                   <p>💡 提示：</p>
                   <ul className="list-disc list-inside mt-1 space-y-1">
                     <li>额度将于明日 0 点自动恢复</li>
-                    <li>当前账户等级：<strong>{details.plan}</strong></li>
                     <li>超限类型：{details.type === 'requests' ? '请求次数' : 'Token 数量'}</li>
                   </ul>
                 </div>
@@ -173,27 +284,24 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
           ),
           duration: 8,
         })
+
+        // 移除 loading 消息
+        setLocalMessages(prev => prev.filter(msg => msg.key !== streamingMessageId))
         return
       }
-      
-      // 未授权 - 跳转登录
+
       if (error.code === 'UNAUTHORIZED' || error.status === 401) {
-        message.open({
-          type: 'error',
-          content: '请先登录',
-          description: '您需要先登录才能发送消息',
-          duration: 3,
-        })
+        message.error('请先登录')
         setTimeout(() => {
           router.push('/login?redirect=' + encodeURIComponent(window.location.pathname))
         }, 1000)
         return
       }
-      
-      // 其他错误 - 简单提示
+
       message.error(error.message || '发送消息失败，请稍后重试')
+      setStreamingMessageId(null)
     }
-  }, [chatId, chatInfo, sendStreamingMessage, router])
+  }, [chatId, chatInfo, sendStreamingMessage, router, streamingMessageId])
 
   if (!isMounted) {
     return (
@@ -221,9 +329,8 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
           autoScroll
         />
       </div>
-      {/* 限额使用情况显示 */}
       <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
-        <UsageIndicator />
+        <UsageIndicator realtimeUsage={usage} />
       </div>
       <Sender
         placeholder={chatInfo?.mode === 'rag' ? '输入问题，基于知识库获取答案...' : '输入消息...'}
@@ -234,6 +341,7 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
           handleSendMessage(messageText)
           setInput('')
         }}
+        disabled={!!streamingMessageId}
       />
     </div>
   )

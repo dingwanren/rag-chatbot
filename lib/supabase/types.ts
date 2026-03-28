@@ -61,6 +61,7 @@ export interface Database {
           status: 'streaming' | 'completed'
           metadata: Json | null
           created_at: string
+          seq?: number
         }
         Insert: {
           id?: string
@@ -70,6 +71,7 @@ export interface Database {
           status?: 'streaming' | 'completed'
           metadata?: Json | null
           created_at?: string
+          seq?: number
         }
         Update: {
           id?: string
@@ -79,6 +81,7 @@ export interface Database {
           status?: 'streaming' | 'completed'
           metadata?: Json | null
           created_at?: string
+          seq?: number
         }
         Relationships: [
           {
@@ -250,6 +253,73 @@ export interface Database {
           }
         ]
       }
+      user_usage: {
+        Row: {
+          user_id: string
+          daily_tokens: number
+          daily_requests: number
+          last_reset_date: string
+          created_at?: string
+          updated_at?: string
+        }
+        Insert: {
+          user_id: string
+          daily_tokens?: number
+          daily_requests?: number
+          last_reset_date?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          daily_tokens?: number
+          daily_requests?: number
+          last_reset_date?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      token_logs: {
+        Row: {
+          id?: string
+          user_id: string
+          chat_id: string
+          prompt_tokens: number
+          completion_tokens: number
+          total_tokens: number
+          model?: string
+          created_at?: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          chat_id: string
+          prompt_tokens: number
+          completion_tokens: number
+          total_tokens: number
+          model?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          chat_id?: string
+          prompt_tokens?: number
+          completion_tokens?: number
+          total_tokens?: number
+          model?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'token_logs_chat_id_fkey'
+            columns: ['chat_id']
+            referencedRelation: 'chats'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: {}
     Functions: {
@@ -262,6 +332,20 @@ export interface Database {
           user_message_id: string
           assistant_message_id: string
         }[]
+      }
+      check_and_consume: {
+        Args: {
+          p_user_id: string
+          p_tokens: number
+        }
+        Returns: Json
+      }
+      increment_tokens: {
+        Args: {
+          p_user_id: string
+          p_tokens: number
+        }
+        Returns: undefined
       }
     }
     Enums: {}
@@ -280,10 +364,16 @@ export type KnowledgeBaseInsert = Database['public']['Tables']['knowledge_bases'
 export type KnowledgeBaseUpdate = Database['public']['Tables']['knowledge_bases']['Update']
 export type UserProfile = Database['public']['Tables']['user_profiles']['Row']
 export type UserProfileInsert = Database['public']['Tables']['user_profiles']['Insert']
+export type UserProfileUpdate = Database['public']['Tables']['user_profiles']['Update']
 export type UserLimits = Database['public']['Tables']['user_limits']['Row']
 export type UserLimitsInsert = Database['public']['Tables']['user_limits']['Insert']
 export type UsageLog = Database['public']['Tables']['usage_logs']['Row']
 export type UsageLogInsert = Database['public']['Tables']['usage_logs']['Insert']
+export type UserUsage = Database['public']['Tables']['user_usage']['Row']
+export type UserUsageInsert = Database['public']['Tables']['user_usage']['Insert']
+export type UserUsageUpdate = Database['public']['Tables']['user_usage']['Update']
+export type TokenLog = Database['public']['Tables']['token_logs']['Row']
+export type TokenLogInsert = Database['public']['Tables']['token_logs']['Insert']
 
 // RPC 函数返回类型
 export type CreateMessagePairResponse = Database['public']['Functions']['create_message_pair']['Returns'][number]

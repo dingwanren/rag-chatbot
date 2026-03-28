@@ -3,7 +3,7 @@
 import XMarkdown from '@ant-design/x-markdown'
 import { CodeHighlighter } from '@ant-design/x'
 import type { ComponentProps } from '@ant-design/x-markdown'
-import { useMemo, useCallback } from 'react'
+import { useMemo } from 'react'
 
 // 引入 XMarkdown 主题样式
 import '@ant-design/x-markdown/themes/light.css'
@@ -40,14 +40,8 @@ export function MarkdownContent({ content, streaming = false }: MarkdownContentP
         content={contentString}
         components={components}
         paragraphTag="div"
-        streaming={
-          streaming
-            ? {
-                hasNextChunk: true,
-                enableAnimation: true,
-              }
-            : undefined
-        }
+        // 🎯 流式模式：启用打字机效果
+        streaming={streaming ? { enable: true } : undefined}
       />
     </div>
   )

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { askQuestion } from '@/lib/rag'
-import { getUserPlan, checkAndUpdateLimits, recordUsage } from '@/lib/quota'
-import { createQuotaError, createUnauthorizedError, createInternalError } from '@/lib/api-errors'
+import { getUserPlan } from '@/lib/quota'
+import { recordTokenUsage } from '@/lib/token-manager'
 import type { Message } from '@/lib/supabase/types'
 
 // 节流间隔（毫秒）- 避免频繁更新数据库
@@ -10,40 +10,33 @@ const THROTTLE_INTERVAL = 500
 export async function POST(req: Request) {
   try {
     const { chatId, messageId } = await req.json()
-    
-    console.log('[chat-stream] Received request:', { chatId, messageId })
 
     if (!chatId || !messageId) {
-      console.error('[chat-stream] Missing chatId or messageId')
       return new Response('Missing chatId or messageId', { status: 400 })
     }
 
     const supabase = await createClient()
 
-    // 验证用户和消息权限
+    // 验证用户
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
-      console.error('[chat-stream] Auth error:', authError)
       return new Response('Unauthorized', { status: 401 })
     }
 
-    // 验证 assistant message 属于当前用户
-    const { data: assistantMessage, error: assistantMessageError } = await supabase
+    // 验证消息权限
+    const { data: assistantMessage } = await supabase
       .from('messages')
       .select('id, chat_id, role')
       .eq('id', messageId)
       .eq('chat_id', chatId)
       .single()
 
-    if (assistantMessageError || !assistantMessage) {
-      console.error('[chat-stream] Assistant message not found:', messageId, assistantMessageError)
+    if (!assistantMessage) {
       return new Response('Assistant message not found', { status: 404 })
     }
-    
-    console.log('[chat-stream] Assistant message verified:', assistantMessage)
 
-    // 获取最后一条用户消息（用于本次对话）
-    const { data: lastUserMessage, error: userMessageError } = await supabase
+    // 获取最后一条用户消息
+    const { data: lastUserMessage } = await supabase
       .from('messages')
       .select('id, content')
       .eq('chat_id', chatId)
@@ -52,21 +45,13 @@ export async function POST(req: Request) {
       .limit(1)
       .single()
 
-    if (userMessageError || !lastUserMessage) {
-      console.error('[chat-stream] User message not found:', chatId, userMessageError)
-      return new Response('No user message found', { status: 400 })
-    }
-    
-    console.log('[chat-stream] Last user message:', { id: lastUserMessage.id, contentLength: lastUserMessage.content?.length })
-
-    const userContent = lastUserMessage.content
-
-    if (!userContent) {
-      console.error('[chat-stream] User message content is empty')
+    if (!lastUserMessage || !lastUserMessage.content) {
       return new Response('No user message content', { status: 400 })
     }
 
-    // 获取聊天信息（包括 knowledgeBaseId）
+    const userContent = lastUserMessage.content
+
+    // 获取聊天信息
     const { data: chat } = await supabase
       .from('chats')
       .select('id, knowledge_base_id')
@@ -74,197 +59,236 @@ export async function POST(req: Request) {
       .single()
 
     if (!chat) {
-      console.error('[chat-stream] Chat not found:', chatId)
       return new Response('Chat not found', { status: 404 })
     }
-    
-    console.log('[chat-stream] Chat info:', { chatId, knowledgeBaseId: chat.knowledge_base_id })
 
-    // 如果没有关联知识库，使用普通 AI 回答（不调用 RAG）
-    if (!chat.knowledge_base_id) {
-      console.log('[chat-stream] No knowledge base, using normal chat')
+    // ========================================
+    // 1. 调用 check_and_consume RPC（调用 LLM 前）
+    // ========================================
+    const { data: quotaResult, error: quotaError } = await supabase.rpc('check_and_consume', {
+      p_user_id: user.id,
+      p_tokens: 0,
+    })
 
-      // 估算 token
-      const estimatedTokens = Math.ceil(userContent.length / 4)
-
-      // 获取用户等级并检查限额
-      const plan = await getUserPlan(user.id)
-      if (plan !== 'super') {
-        const limitCheck = await checkAndUpdateLimits(user.id, plan, estimatedTokens)
-        if (!limitCheck.success) {
-          // 使用结构化错误响应
-          return createQuotaError(limitCheck.error, limitCheck.details)
-        }
-      }
-      
-      // 调用普通 AI 对话（使用 DeepSeek）
-      const response = await fetch('https://api.deepseek.com/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            { role: 'system', content: 'You are a helpful assistant.' },
-            { role: 'user', content: userContent },
-          ],
-          stream: false,
+    if (quotaError) {
+      console.error('[chat-stream] check_and_consume error:', quotaError)
+      return new Response(
+        JSON.stringify({
+          error: '系统繁忙，请稍后重试',
+          code: 'INTERNAL_ERROR',
         }),
-      })
-
-      if (!response.ok) {
-        throw new Error('AI API request failed')
-      }
-
-      const data = await response.json()
-      const answer = data.choices?.[0]?.message?.content || '抱歉，我无法回答您的问题。'
-      
-      // 获取实际 token 使用量
-      const usage = data.usage || {}
-      const promptTokens = usage.prompt_tokens ?? estimatedTokens
-      const completionTokens = usage.completion_tokens ?? 0
-      const totalTokens = usage.total_tokens ?? promptTokens + completionTokens
-
-      // 记录 usage（普通模式不需要更新限额，因为已经在前面预估时更新过了）
-      await recordUsage(user.id, chatId, 'deepseek-chat', promptTokens, completionTokens, totalTokens)
-
-      // 创建流式响应
-      const stream = new ReadableStream({
-        async start(controller) {
-          const encoder = new TextEncoder()
-          let accumulatedContent = ''
-
-          try {
-            for (let i = 0; i < answer.length; i += 50) {
-              const chunk = answer.slice(i, i + 50)
-              accumulatedContent += chunk
-
-              controller.enqueue(
-                encoder.encode(JSON.stringify({ chunk, content: accumulatedContent }) + '\n')
-              )
-
-              await new Promise(resolve => setTimeout(resolve, 50))
-            }
-
-            await supabase
-              .from('messages')
-              .update({ content: answer, status: 'completed' })
-              .eq('id', messageId)
-
-            controller.enqueue(
-              encoder.encode(JSON.stringify({ done: true, content: answer }) + '\n')
-            )
-          } catch (error) {
-            console.error('Normal chat streaming error:', error)
-            await supabase
-              .from('messages')
-              .update({ content: accumulatedContent || '生成回答时出现错误', status: 'completed' })
-              .eq('id', messageId)
-
-            controller.enqueue(
-              encoder.encode(
-                JSON.stringify({ error: error instanceof Error ? error.message : 'Streaming failed', content: accumulatedContent || '生成回答时出现错误' }) + '\n'
-              )
-            )
-          } finally {
-            controller.close()
-          }
-        },
-      })
-
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-        },
-      })
+        { status: 500 }
+      )
     }
 
-    console.log('[chat-stream] Calling askQuestion with:', { query: userContent.substring(0, 50), knowledgeBaseId: chat.knowledge_base_id, userId: user.id })
-
-    // 估算 token
-    const estimatedTokens = Math.ceil(userContent.length / 4)
-
-    // 获取用户等级并检查限额
-    const plan = await getUserPlan(user.id)
-    if (plan !== 'super') {
-      const limitCheck = await checkAndUpdateLimits(user.id, plan, estimatedTokens)
-      if (!limitCheck.success) {
-        // 使用结构化错误响应
-        return createQuotaError(limitCheck.error, limitCheck.details)
-      }
+    if (!(quotaResult as any)?.ok) {
+      const result = quotaResult as any
+      return new Response(
+        JSON.stringify({
+          error: result.message || '今日额度已用完',
+          code: 'QUOTA_EXCEEDED',
+          details: {
+            type: result.error_type || 'requests',
+            current: result.current ?? 0,
+            limit: result.limit ?? 0,
+            resetTime: new Date().toISOString().split('T')[0],
+          },
+        }),
+        { status: 429 }
+      )
     }
 
-    // 调用 RAG 问答（传入 userId 用于安全过滤）
-    const answer = await askQuestion(userContent, chat.knowledge_base_id, user.id)
+    console.log('[chat-stream] Quota check passed')
 
-    console.log('[chat-stream] Got answer, length:', answer.length)
-
-    // 记录 usage（RAG 模式的 token 使用量由 askQuestion 内部估算）
-    // 注意：askQuestion 使用的是阿里百炼，不返回详细 token 信息
-    // 这里简单估算：输入 + 输出
-    const outputTokens = Math.ceil(answer.length / 4)
-    const totalTokens = estimatedTokens + outputTokens
-    await recordUsage(user.id, chatId, 'qwen-plus', estimatedTokens, outputTokens, totalTokens)
-
-    // 创建 ReadableStream 用于响应（模拟流式效果）
+    // ========================================
+    // 2. 创建真正的流式响应
+    // ========================================
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder()
-        
+        let accumulatedContent = ''
+        let lastUpdateTime = Date.now()
+        let finalUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null
+
         try {
-          // 将回答分成小段模拟流式效果
-          const chunkSize = 50
-          let accumulatedContent = ''
-          let lastUpdateTime = Date.now()
+          if (!chat.knowledge_base_id) {
+            // 🎯 普通聊天模式：使用真正的流式请求
+            const response = await fetch('https://api.deepseek.com/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+              },
+              body: JSON.stringify({
+                model: 'deepseek-chat',
+                messages: [
+                  { role: 'system', content: 'You are a helpful assistant.' },
+                  { role: 'user', content: userContent },
+                ],
+                stream: true, // ✅ 启用流式
+                stream_options: { include_usage: true }, // ✅ 包含 usage
+              }),
+            })
 
-          for (let i = 0; i < answer.length; i += chunkSize) {
-            const chunk = answer.slice(i, i + chunkSize)
-            accumulatedContent += chunk
-
-            // 发送 chunk 到前端
-            controller.enqueue(
-              encoder.encode(JSON.stringify({ chunk, content: accumulatedContent }) + '\n')
-            )
-
-            // 节流更新数据库
-            const now = Date.now()
-            if (now - lastUpdateTime >= THROTTLE_INTERVAL) {
-              await supabase
-                .from('messages')
-                .update({
-                  content: accumulatedContent,
-                  status: 'streaming',
-                })
-                .eq('id', messageId)
-
-              lastUpdateTime = now
+            if (!response.ok) {
+              throw new Error('AI API request failed')
             }
 
-            // 模拟打字延迟
-            await new Promise(resolve => setTimeout(resolve, 50))
+            if (!response.body) {
+              throw new Error('No response body')
+            }
+
+            // 🎯 读取 LLM 的流式响应并实时转发给前端
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+
+              const text = decoder.decode(value)
+              const lines = text.split('\n').filter(line => line.trim())
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6)
+                  
+                  if (data === '[DONE]') {
+                    continue
+                  }
+
+                  try {
+                    const parsed = JSON.parse(data)
+                    const delta = parsed.choices?.[0]?.delta?.content
+                    
+                    if (delta) {
+                      accumulatedContent += delta
+
+                      // 发送 chunk 到前端
+                      controller.enqueue(
+                        encoder.encode(JSON.stringify({
+                          chunk: delta,
+                          content: accumulatedContent,
+                        }) + '\n')
+                      )
+
+                      // 节流更新数据库
+                      const now = Date.now()
+                      if (now - lastUpdateTime >= THROTTLE_INTERVAL) {
+                        await supabase
+                          .from('messages')
+                          .update({
+                            content: accumulatedContent,
+                            status: 'streaming',
+                          })
+                          .eq('id', messageId)
+
+                        lastUpdateTime = now
+                      }
+                    }
+
+                    // 保存 usage
+                    if (parsed.usage) {
+                      finalUsage = parsed.usage
+                    }
+                  } catch (e) {
+                    // 忽略解析错误
+                  }
+                }
+              }
+            }
+          } else {
+            // 🎯 RAG 模式：暂时使用假流式（后续优化）
+            const ragResponse = await askQuestion(userContent, chat.knowledge_base_id, user.id)
+
+            if (ragResponse.error) {
+              console.warn('[chat-stream] RAG error:', ragResponse.error)
+            }
+
+            const answer = ragResponse.answer
+            finalUsage = ragResponse.usage || null
+
+            // 模拟流式效果
+            const chunkSize = 50
+            for (let i = 0; i < answer.length; i += chunkSize) {
+              const chunk = answer.slice(i, i + chunkSize)
+              accumulatedContent += chunk
+
+              controller.enqueue(
+                encoder.encode(JSON.stringify({
+                  chunk,
+                  content: accumulatedContent,
+                }) + '\n')
+              )
+
+              await new Promise(resolve => setTimeout(resolve, 30))
+            }
           }
 
-          // 流结束，更新最终状态
+          // ========================================
+          // 3. 流完成：记录日志并更新状态
+          // ========================================
+          console.log('[chat-stream] Stream completed, content length:', accumulatedContent.length)
+          
+          // 更新数据库为 completed（无论有没有 usage）
           await supabase
             .from('messages')
             .update({
-              content: answer,
+              content: accumulatedContent,
               status: 'completed',
             })
             .eq('id', messageId)
 
-          // 发送完成信号
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ done: true, content: answer }) + '\n')
-          )
+          console.log('[chat-stream] Database updated')
+
+          // 如果有 usage，记录日志
+          if (finalUsage) {
+            await recordTokenUsage(
+              user.id,
+              chatId,
+              finalUsage,
+              chat.knowledge_base_id ? 'qwen-plus' : 'deepseek-chat'
+            )
+
+            // 更新 user_usage
+            const totalTokens = finalUsage.total_tokens ?? 0
+            await supabase.rpc('increment_tokens', {
+              p_user_id: user.id,
+              p_tokens: totalTokens,
+            })
+
+            // 获取最新使用量
+            const { data: usageData } = await supabase
+              .from('user_usage')
+              .select('daily_tokens, daily_requests')
+              .eq('user_id', user.id)
+              .single()
+
+            const usageInfo = {
+              daily_tokens: usageData?.daily_tokens ?? 0,
+              daily_requests: usageData?.daily_requests ?? 0,
+            }
+
+            // 发送完成信号（包含 usage）
+            controller.enqueue(
+              encoder.encode(JSON.stringify({
+                done: true,
+                content: accumulatedContent,
+                usage: usageInfo,
+              }) + '\n')
+            )
+          } else {
+            // 没有 usage，只发送完成信号
+            controller.enqueue(
+              encoder.encode(JSON.stringify({
+                done: true,
+                content: accumulatedContent,
+              }) + '\n')
+            )
+          }
         } catch (error) {
-          console.error('RAG streaming error:', error)
-          const errorMessage = error instanceof Error ? error.message : 'Streaming failed'
-          // 流错误，更新状态为 completed
+          console.error('Streaming error:', error)
+
           await supabase
             .from('messages')
             .update({
@@ -275,7 +299,10 @@ export async function POST(req: Request) {
 
           controller.enqueue(
             encoder.encode(
-              JSON.stringify({ error: errorMessage, content: accumulatedContent || '生成回答时出现错误' }) + '\n'
+              JSON.stringify({
+                error: error instanceof Error ? error.message : 'Streaming failed',
+                content: accumulatedContent || '生成回答时出现错误',
+              }) + '\n'
             )
           )
         } finally {
@@ -292,7 +319,16 @@ export async function POST(req: Request) {
       },
     })
   } catch (error) {
-    console.error('RAG streaming error:', error)
-    return new Response('Internal Server Error', { status: 500 })
+    console.error('Streaming error:', error)
+
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : 'Internal Server Error',
+      code: 'LLM_ERROR',
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
   }
 }
