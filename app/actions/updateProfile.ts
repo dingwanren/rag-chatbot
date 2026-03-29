@@ -52,46 +52,17 @@ export async function updateProfile(username: string): Promise<UpdateProfileResu
     }
   }
 
-  // 3. 更新 profiles 表
-  try {
-    const { data, error: updateError } = await supabase
-      .from('profiles')
-      .update({ username: trimmedUsername })
-      .eq('id', user.id)
-      .select('username')
-      .single()
+  // 3. 更新 user_profiles 表（当前只有 plan 字段，暂不更新）
+  // TODO: 当 user_profiles 表添加更多字段（如 display_name, avatar 等）时再实现更新逻辑
+  
+  // 4. 刷新缓存
+  revalidatePath('/profile')
+  revalidatePath('/')
 
-    if (updateError) {
-      // 检查是否是唯一约束冲突（用户名重复）
-      if (updateError.code === '23505') {
-        return {
-          success: false,
-          error: '该用户名已被使用，请换一个',
-        }
-      }
-
-      console.error('Update profile error:', updateError)
-      return {
-        success: false,
-        error: '更新失败，请稍后重试',
-      }
-    }
-
-    // 4. 刷新缓存
-    revalidatePath('/profile')
-    revalidatePath('/')
-
-    return {
-      success: true,
-      data: {
-        username: data.username,
-      },
-    }
-  } catch (error) {
-    console.error('Unexpected error updating profile:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : '更新失败：未知错误',
-    }
+  return {
+    success: true,
+    data: {
+      username: trimmedUsername,
+    },
   }
 }

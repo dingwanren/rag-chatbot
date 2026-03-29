@@ -17,7 +17,7 @@ async function toKnowledgeBase(db: DbKnowledgeBase, supabase: any): Promise<Know
     id: db.id,
     name: db.name,
     description: db.description ?? undefined,
-    createdAt: new Date(db.created_at),
+    created_at: db.created_at,
     documentCount: count ?? 0,
   }
 }

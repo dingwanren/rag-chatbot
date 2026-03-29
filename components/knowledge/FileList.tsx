@@ -2,30 +2,35 @@
 
 import { Flex, Typography, Dropdown, message, Modal, Tag } from 'antd'
 import { FileTextOutlined, DeleteOutlined, MoreOutlined, SyncOutlined } from '@ant-design/icons'
-import { KBFile, FileParseStatus } from '@/types'
+import type { KnowledgeFile, FileStatus } from '@/types'
 
 const { Text } = Typography
 
 interface FileListProps {
-  files: KBFile[]
+  files: KnowledgeFile[]
   onDelete?: (fileId: string) => void
   onRetry?: (fileId: string) => void
 }
 
-const statusConfig: Record<FileParseStatus, { color: string; icon: React.ReactNode; text: string }> = {
-  parsing: {
+const statusConfig: Record<FileStatus, { color: string; icon: React.ReactNode; text: string }> = {
+  pending: {
     color: 'blue',
     icon: <SyncOutlined spin />,
-    text: '解析中',
+    text: '等待中',
   },
-  success: {
+  processing: {
+    color: 'blue',
+    icon: <SyncOutlined spin />,
+    text: '处理中',
+  },
+  completed: {
     color: 'green',
-    icon: null,
-    text: '成功',
+    icon: <FileTextOutlined />,
+    text: '已完成',
   },
   failed: {
     color: 'red',
-    icon: null,
+    icon: <SyncOutlined />,
     text: '失败',
   },
 }
@@ -79,7 +84,7 @@ export function FileList({ files, onDelete, onRetry }: FileListProps) {
   return (
     <div style={{ padding: 16, overflowY: 'auto' }}>
       {files.map((file) => {
-        const status = file.status || 'parsing'
+        const status = (file.status as FileStatus) || 'pending'
         const config = statusConfig[status]
 
         return (
@@ -99,10 +104,10 @@ export function FileList({ files, onDelete, onRetry }: FileListProps) {
           >
             <FileTextOutlined style={{ fontSize: 20, color: '#1890ff' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ display: 'block', marginBottom: 4 }}>{file.name}</Text>
+              <Text style={{ display: 'block', marginBottom: 4 }}>{file.file_name}</Text>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  {formatFileSize(file.size)}
+                  {formatFileSize(file.file_size)}
                 </Text>
                 <Tag icon={config.icon} color={config.color} style={{ margin: 0, fontSize: 12 }}>
                   {config.text}
@@ -116,8 +121,8 @@ export function FileList({ files, onDelete, onRetry }: FileListProps) {
                     key: 'retry',
                     label: '重试',
                     icon: <SyncOutlined />,
-                    onClick: ({ domEvent }: { domEvent: React.MouseEvent }) => {
-                      domEvent.stopPropagation()
+                    onClick: (info) => {
+                      info.domEvent.stopPropagation()
                       handleRetry(file.id)
                     },
                     disabled: file.status !== 'failed',
@@ -127,9 +132,9 @@ export function FileList({ files, onDelete, onRetry }: FileListProps) {
                     label: '删除',
                     icon: <DeleteOutlined />,
                     danger: true,
-                    onClick: ({ domEvent }: { domEvent: React.MouseEvent }) => {
-                      domEvent.stopPropagation()
-                      handleDelete(file.id, file.name)
+                    onClick: (info) => {
+                      info.domEvent.stopPropagation()
+                      handleDelete(file.id, file.file_name)
                     },
                   },
                 ],

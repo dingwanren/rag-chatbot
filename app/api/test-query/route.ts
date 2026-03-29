@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     console.log('query:', query)
     console.log('kbId:', kbId)
 
-    const matches = await searchSimilarChunks(query, kbId)
+    const matches = await searchSimilarChunks(query, kbId, '')
 
     console.log('=== 检索完成 ===')
     console.log('matches count:', matches.length)
@@ -51,3 +51,6 @@ export async function GET(request: Request) {
     )
   }
 }
+
+// 使用 Node.js runtime（Pinecone 检索需要）
+export const runtime = 'nodejs'

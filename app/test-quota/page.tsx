@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 /**
  * 限额系统测试页面
  * 访问：http://localhost:3000/test-quota
- * 
+ *
  * ⚠️ 注意：此页面仅限开发环境使用，生产环境已禁用
  */
 export default function TestQuotaPage() {
@@ -20,7 +20,11 @@ export default function TestQuotaPage() {
 
   // 🛡️ 生产环境阻止访问
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production') {
+    // 使用 Next.js 推荐的方式检测环境
+    // 在生产环境中，window.__NEXT_DATA__ 会包含 production 标志
+    const isProduction = typeof window !== 'undefined' && process.env.NEXT_PUBLIC_VERCEL_ENV === 'production'
+    
+    if (isProduction) {
       alert('⚠️ 测试页面仅限开发环境使用\n\n生产环境已禁用此功能')
       router.push('/')
       return
@@ -28,7 +32,7 @@ export default function TestQuotaPage() {
 
     addLog('🧪 测试页面已加载')
     addLog('📝 提示：此页面仅用于开发测试，生产环境无法访问')
-    
+
     // 页面加载时自动检查用户信息
     checkUser()
   }, [])
@@ -221,7 +225,7 @@ export default function TestQuotaPage() {
     
     addLog(`✅ 找到 ${data.length} 条记录:`)
     data.forEach((log, i) => {
-      addLog(`  ${i + 1}. ${log.model}: ${log.total_tokens} tokens (${new Date(log.created_at).toLocaleString()})`)
+      addLog(`  ${i + 1}. ${log.model}: ${log.total_tokens} tokens (${log.created_at ? new Date(log.created_at).toLocaleString() : 'N/A'})`)
     })
   }
 

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { deleteKnowledgeFile as deleteFile } from '@/app/actions/knowledge-file'
-import type { KnowledgeFile } from '@/lib/supabase/types'
+import type { KnowledgeFile } from '@/types'
 
 interface FileListProps {
   files: KnowledgeFile[]

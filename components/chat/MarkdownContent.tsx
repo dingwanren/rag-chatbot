@@ -40,8 +40,6 @@ export function MarkdownContent({ content, streaming = false }: MarkdownContentP
         content={contentString}
         components={components}
         paragraphTag="div"
-        // 🎯 流式模式：启用打字机效果
-        streaming={streaming ? { enable: true } : undefined}
       />
     </div>
   )

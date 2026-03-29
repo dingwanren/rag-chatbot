@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Bubble, Sender, type BubbleListProps } from '@ant-design/x'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
+import type { MenuProps } from 'antd'
 import { Flex, Avatar, Spin, Tabs, Typography, Dropdown, message, Modal, Button } from 'antd'
 import { UserOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { FileList } from '@/app/components/file-list'
@@ -93,16 +94,16 @@ export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: Knowle
     }
   }, [])
 
-  const chatMenuItems = useMemo(() => [
+  const chatMenuItems = useMemo<MenuProps['items']>(() => [
     {
       key: 'edit',
       label: '重命名',
       icon: <EditOutlined />,
-      onClick: ({ domEvent, key }: { domEvent: React.MouseEvent; key: string }) => {
-        domEvent.stopPropagation()
-        const chat = chats.find(c => c.id === key)
+      onClick: (info) => {
+        info.domEvent.stopPropagation()
+        const chat = chats.find(c => c.id === info.key)
         if (chat) {
-          handleRenameChat(key, chat.title)
+          handleRenameChat(info.key, chat.title)
         }
       },
     },
@@ -111,9 +112,9 @@ export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: Knowle
       label: '删除',
       icon: <DeleteOutlined />,
       danger: true,
-      onClick: ({ domEvent, key }: { domEvent: React.MouseEvent; key: string }) => {
-        domEvent.stopPropagation()
-        handleDeleteChat(key)
+      onClick: (info) => {
+        info.domEvent.stopPropagation()
+        handleDeleteChat(info.key)
       },
     },
   ], [chats, handleRenameChat, handleDeleteChat])
@@ -164,9 +165,13 @@ export function KnowledgeBasePage({ knowledgeBaseId, knowledgeBaseName }: Knowle
       const newChat: Chat = {
         id: newChatId,
         title: messageText.slice(0, 20) + (messageText.length > 20 ? '...' : ''),
-        createdAt: new Date(),
+        created_at: new Date().toISOString(),
         mode: 'rag',
-        knowledgeBaseId,
+        knowledge_base_id: knowledgeBaseId,
+        user_id: '',
+        last_message: null,
+        last_message_at: null,
+        updated_at: new Date().toISOString(),
       }
       setChats(prev => [newChat, ...prev])
       message.success('已创建新对话')

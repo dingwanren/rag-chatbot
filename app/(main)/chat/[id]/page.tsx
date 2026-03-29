@@ -25,7 +25,6 @@ interface BubbleItem {
   role: 'user' | 'ai'
   content: string
   placement: 'start' | 'end'
-  variant?: 'filled' | 'outlined' | 'shadow' | 'borderless' | 'block'
   styles?: {
     content?: React.CSSProperties
   }
@@ -107,12 +106,12 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
       completedMessageId,
       willOverride: !completedMessageId && dbMessages && dbMessages.length > 0
     })
-    
+
     if (dbMessages && dbMessages.length > 0 && !streamingMessageId) {
       const items = dbMessages
         .filter((msg) => msg.content && msg.content.trim() !== '')
         .map((msg) => {
-          const role = msg.role === 'user' ? 'user' : 'ai'
+          const role = msg.role === 'user' ? 'user' as const : 'ai' as const
           const isError = msg.content?.startsWith('⚠️')
 
           return {
@@ -120,7 +119,6 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
             role,
             content: msg.content,
             placement: role === 'user' ? ('end' as const) : ('start' as const),
-            variant: isError ? ('block' as const) : undefined,
             styles: {
               content: isError
                 ? { backgroundColor: '#fff2f0', border: '1px solid #ffccc7' }
@@ -262,26 +260,8 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
       if (error.code === 'QUOTA_EXCEEDED') {
         const details = error.details
 
-        message.open({
-          type: 'warning',
+        message.warning({
           content: '今日额度已用完',
-          description: (
-            <div>
-              <p className="mb-2">{error.message || '您的今日额度已用完'}</p>
-              {details && (
-                <div className="text-xs text-gray-600">
-                  <p>💡 提示：</p>
-                  <ul className="list-disc list-inside mt-1 space-y-1">
-                    <li>额度将于明日 0 点自动恢复</li>
-                    <li>超限类型：{details.type === 'requests' ? '请求次数' : 'Token 数量'}</li>
-                  </ul>
-                </div>
-              )}
-              <p className="mt-2 text-sm font-medium">
-                需要更多额度？请联系管理员升级账户计划
-              </p>
-            </div>
-          ),
           duration: 8,
         })
 

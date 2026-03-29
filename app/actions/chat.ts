@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { Chat, Message } from '@/lib/supabase/types'
+import type { Chat } from '@/types'
+import type { Message } from '@/lib/supabase/types'
 
 /**
  * 创建新聊天

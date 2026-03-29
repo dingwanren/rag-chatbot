@@ -63,10 +63,10 @@ export async function signup(formData: FormData): Promise<ActionResponse> {
       }
     }
 
-    // Create profile in profiles table
-    const { error: profileError } = await supabase.from('profiles').insert({
-      id: authData.user.id,
-      username: email.split('@')[0], // Use email prefix as username
+    // Create profile in user_profiles table
+    const { error: profileError } = await supabase.from('user_profiles').insert({
+      user_id: authData.user.id,
+      plan: 'free',
     })
 
     if (profileError) {
@@ -183,7 +183,7 @@ export async function getCurrentUser(): Promise<
         email: string | null
       }
       profile?: {
-        username: string
+        plan: 'free' | 'pro' | 'super'
       }
     }
   | { success: false; error: string; user?: never; profile?: never }
@@ -209,9 +209,9 @@ export async function getCurrentUser(): Promise<
 
     // Fetch profile data
     const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', authData.user.id)
+      .from('user_profiles')
+      .select('plan')
+      .eq('user_id', authData.user.id)
       .single()
 
     if (profileError) {
@@ -222,11 +222,11 @@ export async function getCurrentUser(): Promise<
       success: true,
       user: {
         id: authData.user.id,
-        email: authData.user.email,
+        email: authData.user.email || null,
       },
       profile: profileData
         ? {
-            username: profileData.username,
+            plan: profileData.plan,
           }
         : undefined,
     }

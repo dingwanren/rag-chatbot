@@ -32,10 +32,10 @@ export interface CurrentUserResult {
   success: boolean
   user?: {
     id: string
-    email: string
+    email: string | null
   }
   profile?: {
-    username: string
+    plan: 'free' | 'pro' | 'super'
   }
   error?: string
 }
@@ -74,10 +74,10 @@ export async function register(input: RegisterInput): Promise<RegisterResult> {
       }
     }
 
-    // Insert user data into profiles table
-    const { error: profileError } = await supabase.from('profiles').insert({
-      id: authData.user.id,
-      username: email.split('@')[0], // Use email prefix as username
+    // Insert user data into user_profiles table
+    const { error: profileError } = await supabase.from('user_profiles').insert({
+      user_id: authData.user.id,
+      plan: 'free',
     })
 
     if (profileError) {
@@ -173,11 +173,11 @@ export async function getCurrentUser(): Promise<CurrentUserResult> {
       }
     }
 
-    // Query profiles table for username
+    // Query user_profiles table for plan
     const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', authData.user.id)
+      .from('user_profiles')
+      .select('plan')
+      .eq('user_id', authData.user.id)
       .single()
 
     if (profileError) {
@@ -195,7 +195,7 @@ export async function getCurrentUser(): Promise<CurrentUserResult> {
         email: authData.user.email || '',
       },
       profile: {
-        username: profileData?.username || '',
+        plan: profileData?.plan || 'free',
       },
     }
   } catch (error) {

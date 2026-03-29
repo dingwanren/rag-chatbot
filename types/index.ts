@@ -1,16 +1,20 @@
 export interface Chat {
   id: string
+  user_id: string
   title: string
-  createdAt: Date
-  mode: 'normal' | 'rag'
-  knowledgeBaseId?: string
+  mode: 'chat' | 'rag'
+  knowledge_base_id: string | null
+  last_message: string | null
+  last_message_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface KnowledgeBase {
   id: string
   name: string
   description?: string
-  createdAt: Date
+  created_at: string
   documentCount?: number
 }
 

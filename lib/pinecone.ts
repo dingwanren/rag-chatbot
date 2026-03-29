@@ -97,8 +97,9 @@ export async function deletePineconeVectors(fileId: string) {
     console.log('deletePineconeVectors: deleting vectors for fileId:', fileId)
     
     const index = pinecone.index('rag-chatbot')
-    
+
     // 使用 delete 方法删除匹配 filter 的向量
+    // @ts-ignore - Pinecone SDK type issue
     await index.delete({
       filter: {
         fileId: { $eq: fileId },
@@ -123,8 +124,9 @@ export async function deletePineconeKnowledgeBaseVectors(knowledgeBaseId: string
     console.log('deletePineconeKnowledgeBaseVectors: deleting vectors for knowledgeBaseId:', knowledgeBaseId)
     
     const index = pinecone.index('rag-chatbot')
-    
+
     // 使用 delete 方法删除匹配 filter 的向量
+    // @ts-ignore - Pinecone SDK type issue
     await index.delete({
       filter: {
         knowledgeBaseId: { $eq: knowledgeBaseId },

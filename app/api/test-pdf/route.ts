@@ -9,7 +9,7 @@ export async function GET() {
 
     const { data: file, error: queryError } = await supabase
       .from('knowledge_files')
-      .select('file_path, file_name')
+      .select('file_url, file_name')
       .eq('status', 'processed')
       .limit(1)
       .single()
@@ -20,7 +20,7 @@ export async function GET() {
       // 尝试获取任意文件
       const { data: anyFile } = await supabase
         .from('knowledge_files')
-        .select('file_path, file_name')
+        .select('file_url, file_name')
         .limit(1)
         .single()
 
@@ -33,13 +33,13 @@ export async function GET() {
       targetFile = anyFile
     }
 
-    console.log('测试文件:', targetFile.file_name, '路径:', targetFile.file_path)
+    console.log('测试文件:', targetFile?.file_name, 'URL:', targetFile?.file_url)
 
-    const text = await parsePdfFromStorage(targetFile.file_path)
+    const text = await parsePdfFromStorage(targetFile!.file_url)
 
     return NextResponse.json({
-      fileName: targetFile.file_name,
-      filePath: targetFile.file_path,
+      fileName: targetFile!.file_name,
+      fileUrl: targetFile!.file_url,
       length: text.length,
       preview: text.slice(0, 200),
     })
@@ -51,3 +51,6 @@ export async function GET() {
     )
   }
 }
+
+// 使用 Node.js runtime（pdf-parse 需要）
+export const runtime = 'nodejs'

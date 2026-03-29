@@ -22,28 +22,28 @@ const mockKnowledgeBases: KnowledgeBase[] = [
     id: 'kb-1',
     name: '产品文档',
     description: '产品相关知识和资料',
-    createdAt: new Date(),
+    created_at: new Date().toISOString(),
     documentCount: 12,
   },
   {
     id: 'kb-2',
     name: '技术手册',
     description: '技术支持文档',
-    createdAt: new Date(),
+    created_at: new Date().toISOString(),
     documentCount: 8,
   },
   {
     id: 'kb-3',
     name: '常见问题',
     description: '客户常见问题集合',
-    createdAt: new Date(),
+    created_at: new Date().toISOString(),
     documentCount: 5,
   },
   {
     id: 'kb-4',
     name: '培训资料',
     description: '员工培训相关材料',
-    createdAt: new Date(),
+    created_at: new Date().toISOString(),
     documentCount: 20,
   },
 ]
@@ -75,7 +75,7 @@ export function KnowledgeListView({
         id: `kb-${Date.now()}`,
         name: '未命名知识库',
         description: '请输入描述',
-        createdAt: new Date(),
+        created_at: new Date().toISOString(),
         documentCount: 0,
       }
       router.push(`/knowledge-bases/${newKb.id}`)

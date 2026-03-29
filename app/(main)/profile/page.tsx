@@ -22,10 +22,10 @@ export default function ProfilePage() {
     try {
       const result = await getCurrentUser()
       if (result.success && result.user) {
-        const savedUsername = result.profile?.username || ''
-        setUsername(savedUsername)
-        setInputUsername(savedUsername)
-        setEmail(result.user.email)
+        const savedPlan = result.profile?.plan || 'free'
+        setUsername(savedPlan)
+        setInputUsername(savedPlan)
+        setEmail(result.user.email || '')
       }
     } catch (error) {
       console.error('Failed to load user:', error)

@@ -125,7 +125,7 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
   }, [chats, router])
 
   // 菜单配置 - 只有聊天有操作菜单
-  const menuConfig: ConversationsProps['menu'] = useCallback((conversation) => {
+  const menuConfig: ConversationsProps['menu'] = useCallback((conversation: any) => {
     const chatId = conversation.key as string
 
     const menuItems: MenuProps['items'] = [

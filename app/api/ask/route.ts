@@ -42,15 +42,15 @@ export async function POST(request: NextRequest) {
     console.log('query:', query)
     console.log('knowledgeBaseId:', knowledgeBaseId)
 
-    // 调用 RAG 问答
-    const answer = await askQuestion(query, knowledgeBaseId)
+    // 调用 RAG 问答（暂时传入空 userId，实际使用时需要从认证中获取）
+    const response = await askQuestion(query, knowledgeBaseId, '')
 
     console.log('=== RAG 问答响应 ===')
-    console.log('answer preview:', answer.slice(0, 100))
+    console.log('answer preview:', response.answer.slice(0, 100))
 
     return NextResponse.json({
       success: true,
-      answer,
+      answer: response.answer,
       query,
       knowledgeBaseId,
     })
@@ -65,3 +65,6 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+// 使用 Node.js runtime（RAG 问答需要）
+export const runtime = 'nodejs'
