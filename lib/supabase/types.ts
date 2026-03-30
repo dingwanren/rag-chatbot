@@ -156,22 +156,25 @@ export interface Database {
           }
         ]
       }
-      user_profiles: {
+      profiles: {
         Row: {
-          user_id: string
+          id: string
           plan: 'free' | 'pro' | 'super'
+          username: string | null
           created_at?: string
           updated_at?: string
         }
         Insert: {
-          user_id: string
-          plan: 'free' | 'pro' | 'super'
+          id: string
+          plan?: 'free' | 'pro' | 'super'
+          username?: string | null
           created_at?: string
           updated_at?: string
         }
         Update: {
-          user_id?: string
+          id?: string
           plan?: 'free' | 'pro' | 'super'
+          username?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -362,9 +365,9 @@ export type MessageUpdate = Database['public']['Tables']['messages']['Update']
 export type KnowledgeBase = Database['public']['Tables']['knowledge_bases']['Row']
 export type KnowledgeBaseInsert = Database['public']['Tables']['knowledge_bases']['Insert']
 export type KnowledgeBaseUpdate = Database['public']['Tables']['knowledge_bases']['Update']
-export type UserProfile = Database['public']['Tables']['user_profiles']['Row']
-export type UserProfileInsert = Database['public']['Tables']['user_profiles']['Insert']
-export type UserProfileUpdate = Database['public']['Tables']['user_profiles']['Update']
+export type Profile = Database['public']['Tables']['profiles']['Row']
+export type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
+export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 export type UserLimits = Database['public']['Tables']['user_limits']['Row']
 export type UserLimitsInsert = Database['public']['Tables']['user_limits']['Insert']
 export type UsageLog = Database['public']['Tables']['usage_logs']['Row']

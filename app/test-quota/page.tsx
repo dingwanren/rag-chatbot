@@ -79,9 +79,9 @@ export default function TestQuotaPage() {
 
         // 获取用户等级
         const { data: profile, error: profileError } = await supabase
-          .from('user_profiles')
+          .from('profiles')
           .select('plan')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .single()
 
         if (profileError) {

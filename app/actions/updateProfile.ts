@@ -52,9 +52,22 @@ export async function updateProfile(username: string): Promise<UpdateProfileResu
     }
   }
 
-  // 3. 更新 user_profiles 表（当前只有 plan 字段，暂不更新）
-  // TODO: 当 user_profiles 表添加更多字段（如 display_name, avatar 等）时再实现更新逻辑
-  
+  // 3. 更新 profiles 表的 username 字段
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update({
+      username: trimmedUsername,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id)
+
+  if (updateError) {
+    return {
+      success: false,
+      error: `更新失败：${updateError.message}`,
+    }
+  }
+
   // 4. 刷新缓存
   revalidatePath('/profile')
   revalidatePath('/')

@@ -22,9 +22,9 @@ export default function ProfilePage() {
     try {
       const result = await getCurrentUser()
       if (result.success && result.user) {
-        const savedPlan = result.profile?.plan || 'free'
-        setUsername(savedPlan)
-        setInputUsername(savedPlan)
+        const savedUsername = result.profile?.username || ''
+        setUsername(savedUsername)
+        setInputUsername(savedUsername)
         setEmail(result.user.email || '')
       }
     } catch (error) {

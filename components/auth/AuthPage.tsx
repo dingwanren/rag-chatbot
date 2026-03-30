@@ -17,17 +17,17 @@ export function AuthPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">
-            Welcome
+            欢迎
           </CardTitle>
           <CardDescription className="text-center">
-            Login to your account or create a new one
+            登录您的账户或创建一个新账户
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="register">Register</TabsTrigger>
+              <TabsTrigger value="login">登录</TabsTrigger>
+              <TabsTrigger value="register">注册</TabsTrigger>
             </TabsList>
             <TabsContent value="login" className="mt-6">
               <LoginForm />

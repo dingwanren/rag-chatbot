@@ -22,7 +22,7 @@ export function SidebarFooter() {
       const result = await getCurrentUser()
       if (result.success && result.user) {
         setUserEmail(result.user.email || '')
-        setUsername(result.profile?.plan || '')
+        setUsername(result.profile?.username || '')
       }
     } catch (error) {
       console.error('Failed to load user:', error)

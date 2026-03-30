@@ -1,5 +1,5 @@
 import { createClient } from './supabase/server'
-import type { UserLimits, UserProfile } from './supabase/types'
+import type { UserLimits, Profile } from './supabase/types'
 import type { QuotaErrorDetails } from './error-types'
 
 /**
@@ -49,9 +49,9 @@ export async function getUserPlan(userId: string): Promise<'free' | 'pro' | 'sup
   const supabase = await createClient()
 
   const { data: profile, error } = await supabase
-    .from('user_profiles')
+    .from('profiles')
     .select('plan')
-    .eq('user_id', userId)
+    .eq('id', userId)
     .single()
 
   if (error || !profile) {

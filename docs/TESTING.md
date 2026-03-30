@@ -17,7 +17,7 @@ npx supabase db push
 ### 2. 验证表已创建
 
 在 **Table Editor** 中确认以下表存在：
-- ✅ `user_profiles`
+- ✅ `profiles`
 - ✅ `user_limits`
 - ✅ `usage_logs`
 
@@ -119,7 +119,7 @@ WHERE user_id = 'YOUR_USER_ID';
 
 1. 在 SQL Editor 中将自己升级为 super 用户：
 ```sql
-UPDATE user_profiles SET plan = 'super' WHERE user_id = 'YOUR_USER_ID';
+UPDATE profiles SET plan = 'super' WHERE id = 'YOUR_USER_ID';
 ```
 
 2. 刷新测试页面，点击 **"📋 检查用户和限额"**
@@ -173,16 +173,16 @@ WHERE user_id = 'YOUR_USER_ID';
 ### 查看所有限额情况
 
 ```sql
-SELECT 
-  up.user_id,
-  up.plan,
+SELECT
+  p.id,
+  p.plan,
   ul.used_requests_today,
   ul.daily_request_limit,
   ul.used_tokens_today,
   ul.daily_token_limit
-FROM user_profiles up
-JOIN user_limits ul ON up.user_id = ul.user_id
-ORDER BY up.plan;
+FROM profiles p
+JOIN user_limits ul ON p.id = ul.user_id
+ORDER BY p.plan;
 ```
 
 ### 查看最近的 usage logs
@@ -198,13 +198,13 @@ LIMIT 20;
 ```sql
 SELECT 
   ul.user_id,
-  up.plan,
+  p.plan,
   SUM(ul.total_tokens) as total_tokens_today,
   COUNT(*) as requests_count
 FROM usage_logs ul
-JOIN user_profiles up ON ul.user_id = up.user_id
+JOIN profiles p ON ul.user_id = p.id
 WHERE DATE(ul.created_at) = CURRENT_DATE
-GROUP BY ul.user_id, up.plan
+GROUP BY ul.user_id, p.plan
 ORDER BY total_tokens_today DESC;
 ```
 
@@ -212,7 +212,7 @@ ORDER BY total_tokens_today DESC;
 
 ## ✅ 测试检查清单
 
-- [ ] 数据库表已创建（user_profiles, user_limits, usage_logs）
+- [ ] 数据库表已创建（profiles, user_limits, usage_logs）
 - [ ] 新用户默认为 free 等级
 - [ ] free 用户达到请求限制后被拒绝
 - [ ] free 用户达到 token 限制后被拒绝
@@ -264,10 +264,10 @@ ORDER BY total_tokens_today DESC;
 **解决**：
 ```sql
 -- 确认 plan 已更新
-SELECT user_id, plan FROM user_profiles WHERE user_id = 'YOUR_USER_ID';
+SELECT id, plan FROM profiles WHERE id = 'YOUR_USER_ID';
 
 -- 如果没有更新，重新执行
-UPDATE user_profiles SET plan = 'super' WHERE user_id = 'YOUR_USER_ID';
+UPDATE profiles SET plan = 'super' WHERE id = 'YOUR_USER_ID';
 ```
 
 ---

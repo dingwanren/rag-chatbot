@@ -68,9 +68,9 @@ export async function getTokenUsageStats(userId: string) {
 
   // 获取用户等级
   const { data: profile } = await supabase
-    .from('user_profiles')
+    .from('profiles')
     .select('plan')
-    .eq('user_id', userId)
+    .eq('id', userId)
     .single()
 
   const plan = profile?.plan || 'free'

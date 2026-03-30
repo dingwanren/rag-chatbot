@@ -61,9 +61,9 @@ export function UsageIndicator({ realtimeUsage }: UsageIndicatorProps) {
 
       // 获取用户等级
       const { data: profile } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .select('plan')
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .single()
 
       // 从 user_limits 表获取限额

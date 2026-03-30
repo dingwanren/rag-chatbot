@@ -63,10 +63,11 @@ export async function signup(formData: FormData): Promise<ActionResponse> {
       }
     }
 
-    // Create profile in user_profiles table
-    const { error: profileError } = await supabase.from('user_profiles').insert({
-      user_id: authData.user.id,
+    // Create profile in profiles table
+    const { error: profileError } = await supabase.from('profiles').insert({
+      id: authData.user.id,
       plan: 'free',
+      username: email.split('@')[0], // 默认用户名为邮箱 @ 前部分
     })
 
     if (profileError) {
@@ -184,6 +185,7 @@ export async function getCurrentUser(): Promise<
       }
       profile?: {
         plan: 'free' | 'pro' | 'super'
+        username: string | null
       }
     }
   | { success: false; error: string; user?: never; profile?: never }
@@ -209,9 +211,9 @@ export async function getCurrentUser(): Promise<
 
     // Fetch profile data
     const { data: profileData, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('plan')
-      .eq('user_id', authData.user.id)
+      .from('profiles')
+      .select('plan, username')
+      .eq('id', authData.user.id)
       .single()
 
     if (profileError) {
@@ -227,6 +229,7 @@ export async function getCurrentUser(): Promise<
       profile: profileData
         ? {
             plan: profileData.plan,
+            username: profileData.username,
           }
         : undefined,
     }
@@ -247,38 +250,38 @@ function getAuthErrorMessage(error: Error & { status?: number; message: string }
 
   // Registration related errors
   if (message.includes('already registered') || message.includes('already exists')) {
-    return 'This email is already registered'
+    return '该邮箱已被注册'
   }
 
   if (message.includes('weak password')) {
-    return 'Password is too weak. Please use a stronger password'
+    return '密码太弱，请使用更复杂的密码'
   }
 
   // Login related errors
   if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
-    return 'Invalid email or password'
+    return '邮箱或密码错误'
   }
 
   if (message.includes('email not confirmed') || message.includes('not confirmed')) {
-    return 'Email not verified. Please check your inbox'
+    return '邮箱未验证，请检查您的邮箱'
   }
 
   // Generic errors
   if (message.includes('invalid email')) {
-    return 'Invalid email format'
+    return '邮箱格式不正确'
   }
 
   if (error.status === 400) {
-    return 'Invalid request parameters'
+    return '请求参数无效'
   }
 
   if (error.status === 422) {
-    return 'Invalid email or password format'
+    return '邮箱或密码格式无效'
   }
 
   if (error.status && error.status >= 500) {
-    return 'Server error. Please try again later'
+    return '服务器错误，请稍后重试'
   }
 
-  return `Authentication failed: ${error.message}`
+  return `认证失败：${error.message}`
 }
