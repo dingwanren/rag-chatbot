@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import QueryClientProvider from "@/QueryClientProvider";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "RAG Chatbot",
