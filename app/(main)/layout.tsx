@@ -82,6 +82,7 @@ export default function MainLayout({
         open={showModal}
         onCreate={handleCreateChat}
         onCancel={() => setShowModal(false)}
+        isCreating={isCreating}
       />
     </div>
   )

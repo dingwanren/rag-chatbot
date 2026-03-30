@@ -9,12 +9,13 @@ interface CreateChatModalProps {
   open: boolean
   onCreate: (data: { title: string; mode: 'chat' | 'rag'; knowledgeBaseId?: string }) => void
   onCancel: () => void
+  isCreating?: boolean  // 添加创建中状态
 }
 
-export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalProps) {
+export function CreateChatModal({ open, onCreate, onCancel, isCreating = false }: CreateChatModalProps) {
   const [form] = Form.useForm()
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loadingKnowledgeBases, setLoadingKnowledgeBases] = useState(false)
   const [selectedMode, setSelectedMode] = useState<'chat' | 'rag'>('chat')
 
   // 加载知识库列表
@@ -25,7 +26,7 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
   }, [open])
 
   const loadKnowledgeBases = async () => {
-    setLoading(true)
+    setLoadingKnowledgeBases(true)
     try {
       const { data, error } = await getKnowledgeBases()
       if (error) {
@@ -36,14 +37,14 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
     } catch (e) {
       message.error('加载知识库列表失败')
     } finally {
-      setLoading(false)
+      setLoadingKnowledgeBases(false)
     }
   }
 
   const handleModeChange = useCallback((e: any) => {
     const newMode = e.target.value
     setSelectedMode(newMode)
-    
+
     // 切换到普通聊天时，清空知识库选择
     if (newMode === 'chat') {
       form.setFieldValue('knowledgeBaseId', undefined)
@@ -51,9 +52,12 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
   }, [form])
 
   const handleCreate = useCallback(async () => {
+    // 防止重复点击
+    if (isCreating) return
+
     try {
       const values = await form.validateFields()
-      
+
       // 如果是 rag 模式，必须选择知识库
       if (values.mode === 'rag' && !values.knowledgeBaseId) {
         message.error('请选择知识库')
@@ -72,13 +76,16 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
     } catch (error) {
       console.error('Validation error:', error)
     }
-  }, [form, onCreate])
+  }, [form, onCreate, isCreating])
 
   const handleCancel = useCallback(() => {
+    // 如果正在创建，不允许取消
+    if (isCreating) return
+    
     form.resetFields()
     setSelectedMode('chat')
     onCancel()
-  }, [form, onCancel])
+  }, [form, onCancel, isCreating])
 
   return (
     <Modal
@@ -88,7 +95,7 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
       onCancel={handleCancel}
       okText="创建"
       cancelText="取消"
-      confirmLoading={loading}
+      confirmLoading={isCreating}  // 使用创建状态，而不是知识库加载状态
       width={500}
     >
       <Form
@@ -103,7 +110,7 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
           name="title"
           rules={[{ max: 50, message: '标题不能超过 50 个字符' }]}
         >
-          <Input placeholder="可选，默认：新对话" allowClear />
+          <Input placeholder="可选，默认：新对话" allowClear disabled={isCreating} />
         </Form.Item>
 
         <Form.Item
@@ -111,7 +118,7 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
           name="mode"
           rules={[{ required: true, message: '请选择聊天模式' }]}
         >
-          <Radio.Group onChange={handleModeChange} value={selectedMode}>
+          <Radio.Group onChange={handleModeChange} value={selectedMode} disabled={isCreating}>
             <Radio value="chat">
               <span role="img" aria-label="chat">💬</span> 普通聊天
             </Radio>
@@ -130,7 +137,7 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
           >
             <Select
               placeholder="请选择知识库"
-              loading={loading}
+              loading={loadingKnowledgeBases}  // 只在加载知识库时转圈
               allowClear={false}
               showSearch
               optionFilterProp="children"
@@ -142,7 +149,8 @@ export function CreateChatModal({ open, onCreate, onCancel }: CreateChatModalPro
                 label: kb.name,
                 title: kb.name,
               }))}
-              notFoundContent={loading ? '加载中...' : '暂无知识库'}
+              notFoundContent={loadingKnowledgeBases ? '加载中...' : '暂无知识库'}
+              disabled={isCreating}
             />
           </Form.Item>
         )}

@@ -103,6 +103,7 @@ export function useCreateChat() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chatList'] })
     },
+    retry: false,  // 失败不重试，避免重复创建
   })
 
   return {

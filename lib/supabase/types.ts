@@ -180,6 +180,40 @@ export interface Database {
         }
         Relationships: []
       }
+      chat_summaries: {
+        Row: {
+          id: string
+          chat_id: string
+          summary_text: string
+          message_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          chat_id: string
+          summary_text: string
+          message_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          chat_id?: string
+          summary_text?: string
+          message_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'chat_summaries_chat_id_fkey'
+            columns: ['chat_id']
+            referencedRelation: 'chats'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       user_limits: {
         Row: {
           user_id: string
@@ -350,6 +384,23 @@ export interface Database {
         }
         Returns: undefined
       }
+      get_or_create_chat_summary: {
+        Args: {
+          p_chat_id: string
+        }
+        Returns: {
+          summary_text: string
+          message_count: number
+        }[]
+      }
+      update_chat_summary: {
+        Args: {
+          p_chat_id: string
+          p_summary_text: string
+          p_message_count: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {}
   }
@@ -368,6 +419,9 @@ export type KnowledgeBaseUpdate = Database['public']['Tables']['knowledge_bases'
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
 export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
+export type ChatSummary = Database['public']['Tables']['chat_summaries']['Row']
+export type ChatSummaryInsert = Database['public']['Tables']['chat_summaries']['Insert']
+export type ChatSummaryUpdate = Database['public']['Tables']['chat_summaries']['Update']
 export type UserLimits = Database['public']['Tables']['user_limits']['Row']
 export type UserLimitsInsert = Database['public']['Tables']['user_limits']['Insert']
 export type UsageLog = Database['public']['Tables']['usage_logs']['Row']

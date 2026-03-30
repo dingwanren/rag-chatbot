@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { searchSimilarChunks } from './pinecone'
 import { estimateTokens } from './token-manager'
 
@@ -22,6 +23,18 @@ export interface RAGResponse {
     message: string
   }
 }
+
+/**
+ * 对话消息类型
+ */
+export type ConversationMessage = { role: string; content: string }
+
+/**
+ * 构建 RAG prompt（控制长度，防止 token 爆炸）
+ * @param query - 用户问题
+ * @param context - 检索到的上下文
+ * @param maxContextLength - 最大上下文长度（默认 2000 字符）
+ */
 
 /**
  * 构建 RAG prompt（控制长度，防止 token 爆炸）
@@ -61,12 +74,14 @@ ${query}
  * @param query - 用户问题
  * @param knowledgeBaseId - 知识库 ID
  * @param userId - 用户 ID（用于 Pinecone 过滤，确保安全）
+ * @param conversationMessages - 对话历史消息（可选，用于多轮对话）
  * @returns RAGResponse（包含回答和 token 使用）
  */
 export async function askQuestion(
   query: string,
   knowledgeBaseId: string,
-  userId: string
+  userId: string,
+  conversationMessages?: ConversationMessage[] | ChatCompletionMessageParam[]
 ): Promise<RAGResponse> {
   try {
     console.log('=== RAG 问答开始 ===')
@@ -103,20 +118,42 @@ export async function askQuestion(
     const estimatedTokens = estimateTokens(prompt)
     console.log('estimated tokens:', estimatedTokens)
 
-    // 5. 调用 LLM（阿里百炼）
+    // 5. 构建 messages（支持多轮对话）
+    const messages: ChatCompletionMessageParam[] = [
+      { role: 'system', content: '你是一个专业的知识库助手，基于提供的知识库内容回答问题。' }
+    ]
+
+    // 如果有对话历史，添加到 messages 中
+    if (conversationMessages && conversationMessages.length > 0) {
+      // 过滤掉最后一条用户消息（因为 query 已经是最新的问题）
+      const historyMessages = conversationMessages.slice(0, -1)
+      
+      // 处理两种类型的消息
+      historyMessages.forEach(msg => {
+        if ('role' in msg && 'content' in msg) {
+          const role = msg.role as 'user' | 'assistant'
+          const content = typeof msg.content === 'string' ? msg.content : ''
+          if (role === 'user' || role === 'assistant') {
+            messages.push({ role, content })
+          }
+        }
+      })
+    }
+
+    // 添加当前 RAG prompt
+    messages.push({ role: 'user', content: prompt })
+
+    // 6. 调用 LLM（阿里百炼）
     const completion = await openai.chat.completions.create({
       model: 'qwen-plus',
-      messages: [
-        { role: 'system', content: '你是一个专业的知识库助手，基于提供的知识库内容回答问题。' },
-        { role: 'user', content: prompt }
-      ],
+      messages: messages,
       temperature: 0.3,
       max_tokens: 2000,
     })
 
     const answer = completion.choices[0].message.content || '抱歉，生成回答时出现错误。'
-    
-    // 6. 获取真实 token 使用
+
+    // 7. 获取真实 token 使用
     const usage = completion.usage || {
       prompt_tokens: estimatedTokens,
       completion_tokens: Math.ceil(answer.length / 4),
@@ -133,7 +170,7 @@ export async function askQuestion(
     }
   } catch (error) {
     console.error('askQuestion error:', error)
-    
+
     // 判断是否是 token 限额错误
     if (error instanceof Error && error.message.includes('token')) {
       return {
@@ -144,7 +181,7 @@ export async function askQuestion(
         },
       }
     }
-    
+
     return {
       answer: '抱歉，生成回答时出现错误。',
       error: {

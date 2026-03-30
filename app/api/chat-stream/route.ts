@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { askQuestion } from '@/lib/rag'
 import { getUserPlan } from '@/lib/quota'
 import { recordTokenUsage } from '@/lib/token-manager'
+import { buildMessagesWithSummary, checkAndUpdateSummary } from '@/lib/chat-summary'
 import type { Message } from '@/lib/supabase/types'
 
 // 节流间隔（毫秒）- 避免频繁更新数据库
@@ -113,6 +114,15 @@ export async function POST(req: Request) {
         try {
           if (!chat.knowledge_base_id) {
             // 🎯 普通聊天模式：使用真正的流式请求
+            // 构建带总结的 messages
+            const messages = await buildMessagesWithSummary(
+              chatId,
+              userContent,
+              'You are a helpful assistant.'
+            )
+
+            console.log('[chat-stream] Messages with summary:', messages.length)
+
             const response = await fetch('https://api.deepseek.com/chat/completions', {
               method: 'POST',
               headers: {
@@ -121,12 +131,9 @@ export async function POST(req: Request) {
               },
               body: JSON.stringify({
                 model: 'deepseek-chat',
-                messages: [
-                  { role: 'system', content: 'You are a helpful assistant.' },
-                  { role: 'user', content: userContent },
-                ],
-                stream: true, // ✅ 启用流式
-                stream_options: { include_usage: true }, // ✅ 包含 usage
+                messages: messages,
+                stream: true,
+                stream_options: { include_usage: true },
               }),
             })
 
@@ -198,8 +205,17 @@ export async function POST(req: Request) {
               }
             }
           } else {
-            // 🎯 RAG 模式：暂时使用假流式（后续优化）
-            const ragResponse = await askQuestion(userContent, chat.knowledge_base_id, user.id)
+            // 🎯 RAG 模式：使用带总结的上下文
+            // 构建带总结的 messages
+            const messages = await buildMessagesWithSummary(
+              chatId,
+              userContent,
+              '你是一个专业的知识库助手，请根据上下文回答用户的问题。'
+            )
+
+            console.log('[chat-stream] RAG mode with summary, messages:', messages.length)
+
+            const ragResponse = await askQuestion(userContent, chat.knowledge_base_id, user.id, messages)
 
             if (ragResponse.error) {
               console.warn('[chat-stream] RAG error:', ragResponse.error)
@@ -286,6 +302,12 @@ export async function POST(req: Request) {
               }) + '\n')
             )
           }
+
+          // 🧠 异步检查并更新对话总结（不阻塞响应）
+          // 每 10 轮对话自动生成总结，减少 token 消耗
+          checkAndUpdateSummary(chatId).catch(err => {
+            console.error('[chat-stream] Summary check error:', err)
+          })
         } catch (error) {
           console.error('Streaming error:', error)
 
