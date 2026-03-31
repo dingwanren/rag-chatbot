@@ -144,7 +144,7 @@ export function UsageIndicator({ realtimeUsage }: UsageIndicatorProps) {
 
       {/* Token 使用进度条 */}
       <div className="flex items-center gap-2">
-        <Tooltip title={`Token：${currentTokens}/${usage.token_limit}`}>
+        <Tooltip title={`Token：${currentTokens}/${usage.token_limit}`} styles={{ root: { maxWidth: '200px' } }}>
           <Progress
             percent={tokenPercentage}
             strokeColor={getStatusColor(tokenPercentage)}
@@ -161,7 +161,7 @@ export function UsageIndicator({ realtimeUsage }: UsageIndicatorProps) {
 
       {/* 请求次数进度条 */}
       <div className="flex items-center gap-2">
-        <Tooltip title={`请求次数：${currentRequests}/${usage.request_limit}`}>
+        <Tooltip title={`请求次数：${currentRequests}/${usage.request_limit}`} styles={{ root: { maxWidth: '200px' } }}>
           <Progress
             percent={requestPercentage}
             strokeColor={getStatusColor(requestPercentage)}

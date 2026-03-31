@@ -134,26 +134,39 @@ export async function uploadKnowledgeFile(
       return { data: null, error: new Error(`数据库写入失败：${dbError.message}`) }
     }
 
-    // 文件上传成功后，调用 processFile 解析 PDF 文本
+    // 文件上传成功后，异步调用 processFile 解析 PDF 文本
     const insertedFile = dbData as KnowledgeFile
-    console.log('=== 开始处理上传的 PDF 文件，fileId:', insertedFile.id, '===')
-    try {
-      const text = await processFile(insertedFile.id)
-      console.log('=== PDF 处理完成，文本长度:', text.length, '===')
-      // 更新状态为 processed
-      await supabase
-        .from('knowledge_files')
-        .update({ status: 'processed' })
-        .eq('id', insertedFile.id)
-    } catch (processError) {
-      console.error('File processing error:', processError)
-      // 处理失败不影响上传流程，仅记录日志
-    }
+    console.log('=== 开始异步处理上传的 PDF 文件，fileId:', insertedFile.id, '===')
+
+    // 先更新状态为 processing
+    await supabase
+      .from('knowledge_files')
+      .update({ status: 'processing' })
+      .eq('id', insertedFile.id)
+
+    // 🥇 Step 4: 优化异步处理，确保状态一定会更新
+    processFile(insertedFile.id)
+      .then((text) => {
+        console.log('=== PDF 处理完成，文本长度:', text.length, '===')
+        // 更新状态为 completed
+        return supabase
+          .from('knowledge_files')
+          .update({ status: 'completed' })
+          .eq('id', insertedFile.id)
+      })
+      .catch((processError) => {
+        console.error('File processing error:', processError)
+        // 处理失败，更新状态为 failed
+        return supabase
+          .from('knowledge_files')
+          .update({ status: 'failed' })
+          .eq('id', insertedFile.id)
+      })
 
     revalidatePath(`/knowledge-bases/${knowledgeBaseId}`)
 
-    return { 
-      data: insertedFile, 
+    return {
+      data: insertedFile,
       error: null,
       qualityCheck,
     }

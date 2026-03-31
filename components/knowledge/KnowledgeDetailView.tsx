@@ -14,6 +14,7 @@ import { KnowledgeFile } from '@/types'
 import { RetrievalSettings } from './RetrievalSettings'
 import { FileCard } from './FileCard'
 import { uploadKnowledgeFile, deleteKnowledgeFile, getFiles } from '@/app/actions/knowledge-file'
+import { createClient } from '@/lib/supabase/browser'
 
 const { Title, Text } = Typography
 
@@ -58,6 +59,78 @@ export function KnowledgeDetailView({
   useEffect(() => {
     loadFiles()
   }, [knowledgeBaseId])
+
+  // ============================================
+  // 🥇 Step 2: Supabase Realtime 订阅（核心）
+  // ============================================
+  useEffect(() => {
+    const supabase = createClient()
+
+    const channel = supabase
+      .channel(`knowledge-files-${knowledgeBaseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'knowledge_files',
+          filter: `knowledge_base_id=eq.${knowledgeBaseId}`,
+        },
+        (payload) => {
+          const updated = payload.new as KnowledgeFile
+
+          // 只更新变化的那一条数据，不刷新整个列表
+          setFiles(prev =>
+            prev.map(f =>
+              f.id === updated.id
+                ? { ...f, status: updated.status }
+                : f
+            )
+          )
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [knowledgeBaseId])
+
+  // ============================================
+  // 🥇 Step 1: 轮询机制兜底（修复依赖问题）
+  // ============================================
+  useEffect(() => {
+    const hasProcessingFile = files.some(f => f.status === 'processing' || f.status === 'pending')
+
+    if (!hasProcessingFile) {
+      return
+    }
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data } = await getFiles(knowledgeBaseId)
+        if (data) {
+          // 只更新状态变化的文件，避免整个表格刷新
+          setFiles(prevFiles => {
+            if (prevFiles.length === data.length) {
+              return prevFiles.map(prevFile => {
+                const newFile = data.find(f => f.id === prevFile.id)
+                if (newFile && newFile.status !== prevFile.status) {
+                  return { ...prevFile, status: newFile.status }
+                }
+                return prevFile
+              })
+            }
+            return data
+          })
+        }
+      } catch (error) {
+        console.error('Poll error:', error)
+      }
+    }, 2000)
+
+    return () => clearInterval(pollInterval)
+  }, [files, knowledgeBaseId])
 
   const loadFiles = async () => {
     setLoading(true)
@@ -138,7 +211,17 @@ export function KnowledgeDetailView({
 
       if (data) {
         message.success(`${fileObj.name} 上传成功`)
-        await loadFiles()
+
+        // 🥇 Step 3: 上传成功后直接更新 UI，不立即 loadFiles
+        // 交给 realtime / polling 更新状态
+        setFiles(prev => [
+          {
+            ...data,
+            status: 'processing', // 初始状态设为 processing
+          },
+          ...prev,
+        ])
+
         onSuccess?.(data)
       }
     } catch (e) {
@@ -218,7 +301,11 @@ export function KnowledgeDetailView({
       render: (status?: string) => {
         const config = status && statusConfig[status] ? statusConfig[status] : statusConfig.pending
         return (
-          <Tag icon={config.icon} color={config.color}>
+          <Tag 
+            icon={config.icon} 
+            color={config.color}
+            className="transition-all duration-300"
+          >
             {config.text}
           </Tag>
         )
