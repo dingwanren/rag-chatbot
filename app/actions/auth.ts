@@ -44,12 +44,14 @@ export async function signup(formData: FormData): Promise<ActionResponse> {
   }
 
   try {
+    // 1. 注册 Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
     })
 
     if (authError) {
+      console.error('Signup auth error:', authError)
       return {
         success: false,
         error: getAuthErrorMessage(authError),
@@ -57,25 +59,34 @@ export async function signup(formData: FormData): Promise<ActionResponse> {
     }
 
     if (!authData.user) {
+      console.error('Signup failed: No user created')
       return {
         success: false,
-        error: 'Signup failed: Unable to create user',
+        error: '注册失败：无法创建用户',
       }
     }
 
-    // Create profile in profiles table
-    const { error: profileError } = await supabase.from('profiles').insert({
+    console.log('Auth user created:', authData.user.id)
+
+    // 2. 手动创建 profile（使用 upsert 避免重复插入）
+    const { error: profileError } = await supabase.from('profiles').upsert({
       id: authData.user.id,
       plan: 'free',
-      username: email.split('@')[0], // 默认用户名为邮箱 @ 前部分
+      username: email.split('@')[0],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
 
     if (profileError) {
       console.error('Failed to create profile:', profileError)
+      console.error('Error details:', profileError.message, 'Code:', profileError.code)
+      // Profile 创建失败不影响注册流程
+    } else {
+      console.log('Profile created successfully')
     }
 
     revalidatePath('/', 'layout')
-    
+
     // 返回成功，让客户端跳转
     return {
       success: true,
@@ -83,9 +94,11 @@ export async function signup(formData: FormData): Promise<ActionResponse> {
     }
   } catch (error) {
     console.error('Unexpected error during signup:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Error details:', errorMessage)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Signup failed: Unknown error',
+      error: `注册失败：${errorMessage}`,
     }
   }
 }
