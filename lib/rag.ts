@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { searchSimilarChunks } from './pinecone'
 import { estimateTokens } from './token-manager'
+import { getRagConfig } from './rag-config'
 
 const openai = new OpenAI({
   baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -28,13 +29,6 @@ export interface RAGResponse {
  * 对话消息类型
  */
 export type ConversationMessage = { role: string; content: string }
-
-/**
- * 构建 RAG prompt（控制长度，防止 token 爆炸）
- * @param query - 用户问题
- * @param context - 检索到的上下文
- * @param maxContextLength - 最大上下文长度（默认 2000 字符）
- */
 
 /**
  * 构建 RAG prompt（控制长度，防止 token 爆炸）
@@ -75,13 +69,15 @@ ${query}
  * @param knowledgeBaseId - 知识库 ID
  * @param userId - 用户 ID（用于 Pinecone 过滤，确保安全）
  * @param conversationMessages - 对话历史消息（可选，用于多轮对话）
+ * @param ragConfig - RAG 配置（可选，如果不传则自动获取知识库配置）
  * @returns RAGResponse（包含回答和 token 使用）
  */
 export async function askQuestion(
   query: string,
   knowledgeBaseId: string,
   userId: string,
-  conversationMessages?: ConversationMessage[] | ChatCompletionMessageParam[]
+  conversationMessages?: ConversationMessage[] | ChatCompletionMessageParam[],
+  ragConfig?: { top_k?: number; threshold?: number }
 ): Promise<RAGResponse> {
   try {
     console.log('=== RAG 问答开始 ===')
@@ -89,8 +85,17 @@ export async function askQuestion(
     console.log('knowledgeBaseId:', knowledgeBaseId)
     console.log('userId:', userId)
 
-    // 1. 调用检索（带 userId 过滤）
-    const matches = await searchSimilarChunks(query, knowledgeBaseId, userId)
+    // 获取 RAG 配置（如果未提供，则获取知识库的配置）
+    const config = ragConfig || await getRagConfig(knowledgeBaseId)
+
+    // 1. 调用检索（带 userId 过滤，使用配置的 top_k 和 threshold）
+    const matches = await searchSimilarChunks(
+      query,
+      knowledgeBaseId,
+      userId,
+      config.top_k,
+      config.threshold
+    )
     console.log('检索到 matches:', matches.length)
 
     if (matches.length === 0) {

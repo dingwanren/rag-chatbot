@@ -108,7 +108,11 @@ export async function getOrCreateUserLimits(userId: string): Promise<UserLimits>
  */
 function shouldResetLimits(limits: UserLimits): boolean {
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-  return limits.last_reset_date !== today
+  // 从 timestamp 中提取日期部分进行比较
+  const lastResetDate = limits.last_reset_date ? 
+    new Date(limits.last_reset_date).toISOString().split('T')[0] : 
+    ''
+  return lastResetDate !== today
 }
 
 /**

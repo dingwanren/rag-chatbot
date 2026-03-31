@@ -3,6 +3,7 @@ import pdf from 'pdf-parse'
 import { splitTextIntoChunks } from './chunk'
 import { embedText } from './embedding'
 import { pinecone } from './pinecone'
+import { getRagConfig } from './rag-config'
 
 /**
  * 处理上传的 PDF 文件：从 Storage 下载并解析文本，生成 embedding 并写入 Pinecone
@@ -40,8 +41,13 @@ export async function processFile(fileId: string): Promise<string> {
     }
 
     const userId = kbData.user_id
+    const knowledgeBaseId = fileRecord.knowledge_base_id
 
-    console.log(`开始处理文件：${fileRecord.file_name}, URL: ${fileRecord.file_url}, knowledgeBaseId: ${fileRecord.knowledge_base_id}, userId: ${userId}`)
+    // 获取知识库的 RAG 配置（使用 chunk_size）
+    const ragConfig = await getRagConfig(knowledgeBaseId)
+    console.log(`RAG config for KB ${knowledgeBaseId}: top_k=${ragConfig.top_k}, threshold=${ragConfig.threshold}, chunk_size=${ragConfig.chunk_size}`)
+
+    console.log(`开始处理文件：${fileRecord.file_name}, URL: ${fileRecord.file_url}, knowledgeBaseId: ${knowledgeBaseId}, userId: ${userId}`)
 
     // 2. 从 file_url 下载 PDF (public URL)
     const response = await fetch(fileRecord.file_url)
@@ -59,8 +65,8 @@ export async function processFile(fileId: string): Promise<string> {
     // 5. 打印日志
     console.log('pdf text length:', data.text.length)
 
-    // 6. 使用 splitTextIntoChunks 切分文本
-    const chunks = splitTextIntoChunks(data.text, 500, 100)
+    // 6. 使用 splitTextIntoChunks 切分文本（使用知识库配置的 chunk_size）
+    const chunks = splitTextIntoChunks(data.text, ragConfig.chunk_size, 100)
     console.log('chunks:', chunks.length)
 
     if (chunks.length === 0) {

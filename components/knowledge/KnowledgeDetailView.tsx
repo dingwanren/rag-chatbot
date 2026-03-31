@@ -348,7 +348,7 @@ export function KnowledgeDetailView({
           </>
         ) : (
           <div className="h-full overflow-auto p-6">
-            <RetrievalSettings />
+            <RetrievalSettings knowledgeBaseId={knowledgeBaseId} />
           </div>
         )}
       </div>

@@ -43,17 +43,23 @@ export async function upsertTestVector() {
  * @param query - 查询文本
  * @param knowledgeBaseId - 知识库 ID（用于过滤）
  * @param userId - 用户 ID（用于过滤，确保安全）
+ * @param topK - 检索返回数量（可选，默认 5）
+ * @param threshold - 相似度阈值（可选，默认 0.65）
  * @returns 相关的 chunks 及其相似度分数
  */
 export async function searchSimilarChunks(
   query: string,
   knowledgeBaseId: string,
-  userId: string
+  userId: string,
+  topK: number = 5,
+  threshold: number = 0.65
 ) {
   try {
     console.log('query:', query)
     console.log('knowledgeBaseId:', knowledgeBaseId)
     console.log('userId:', userId)
+    console.log('topK:', topK)
+    console.log('threshold:', threshold)
 
     // 1. 对 query 做 embedding
     const queryEmbedding = await embedText(query)
@@ -62,7 +68,7 @@ export async function searchSimilarChunks(
     const index = pinecone.index('rag-chatbot')
     const result = await index.query({
       vector: queryEmbedding,
-      topK: 5,
+      topK: topK,
       includeMetadata: true,
       filter: {
         knowledgeBaseId: { $eq: knowledgeBaseId },
@@ -70,13 +76,17 @@ export async function searchSimilarChunks(
       },
     })
 
-    // 3. 提取结果
+    // 3. 提取结果并根据 threshold 过滤
     const matches = result.matches || []
-    console.log('matches:', matches.length)
+    console.log('matches before threshold filter:', matches.length)
 
-    return matches.map((match) => ({
+    // 4. 根据相似度阈值过滤（score 可能为 undefined，需要过滤）
+    const filteredMatches = matches.filter(match => match.score !== undefined && match.score >= threshold)
+    console.log('matches after threshold filter:', filteredMatches.length)
+
+    return filteredMatches.map((match) => ({
       content: (match.metadata?.content as string) || '',
-      score: match.score,
+      score: match.score || 0,
       fileId: (match.metadata?.fileId as string) || '',
       chunkIndex: (match.metadata?.chunkIndex as number) || 0,
       fileName: (match.metadata?.fileName as string) || '',

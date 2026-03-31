@@ -214,6 +214,43 @@ export interface Database {
           }
         ]
       }
+      rag_configs: {
+        Row: {
+          id: string
+          knowledge_base_id: string
+          top_k: number
+          threshold: number
+          chunk_size: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          knowledge_base_id: string
+          top_k?: number
+          threshold?: number
+          chunk_size?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          knowledge_base_id?: string
+          top_k?: number
+          threshold?: number
+          chunk_size?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'rag_configs_knowledge_base_id_fkey'
+            columns: ['knowledge_base_id']
+            referencedRelation: 'knowledge_bases'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       user_limits: {
         Row: {
           user_id: string
@@ -401,6 +438,25 @@ export interface Database {
         }
         Returns: undefined
       }
+      get_or_create_rag_config: {
+        Args: {
+          p_knowledge_base_id: string
+        }
+        Returns: {
+          top_k: number
+          threshold: number
+          chunk_size: number
+        }[]
+      }
+      update_rag_config: {
+        Args: {
+          p_knowledge_base_id: string
+          p_top_k: number
+          p_threshold: number
+          p_chunk_size: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {}
   }
@@ -422,6 +478,9 @@ export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']
 export type ChatSummary = Database['public']['Tables']['chat_summaries']['Row']
 export type ChatSummaryInsert = Database['public']['Tables']['chat_summaries']['Insert']
 export type ChatSummaryUpdate = Database['public']['Tables']['chat_summaries']['Update']
+export type RagConfig = Database['public']['Tables']['rag_configs']['Row']
+export type RagConfigInsert = Database['public']['Tables']['rag_configs']['Insert']
+export type RagConfigUpdate = Database['public']['Tables']['rag_configs']['Update']
 export type UserLimits = Database['public']['Tables']['user_limits']['Row']
 export type UserLimitsInsert = Database['public']['Tables']['user_limits']['Insert']
 export type UsageLog = Database['public']['Tables']['usage_logs']['Row']
