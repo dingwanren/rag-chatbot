@@ -177,11 +177,25 @@ export function AppSidebar({ className, collapsed = false }: AppSidebarProps) {
             加载中...
           </div>
         ) : chats.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">
-            <MessageOutlined className="text-4xl mb-2 block" />
-            <p>暂无对话</p>
-            <p className="text-xs mt-1">点击"新建对话"开始聊天</p>
-          </div>
+          <>
+            {/* 空状态时，按钮在上方，提示在下方，间距与有聊天时一致 */}
+            <div className="p-3 mb-3">
+              <button
+                onClick={handleNewChat}
+                className="w-full py-2 px-4 rounded-md transition-colors flex items-center justify-center gap-2 text-sm"
+                style={{ backgroundColor: 'rgba(24, 144, 255, 0.1)', color: '#1890ff', borderColor: '#1890ff', borderWidth: '1px', borderStyle: 'solid' }}
+                disabled={isDeleting || isRenaming}
+              >
+                <PlusOutlined />
+                新建对话
+              </button>
+            </div>
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              <MessageOutlined className="text-4xl mb-2 block" />
+              <p>暂无对话</p>
+              <p className="text-xs mt-1">开始第一次聊天吧</p>
+            </div>
+          </>
         ) : (
           <Conversations
             items={items}

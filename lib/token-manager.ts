@@ -30,7 +30,6 @@ export function estimateTokens(text: string): number {
  * @param userId - 用户 ID
  * @param chatId - 聊天 ID
  * @param usage - token 使用详情
- * @param model - 使用的模型
  */
 export async function recordTokenUsage(
   userId: string,
@@ -39,8 +38,7 @@ export async function recordTokenUsage(
     prompt_tokens: number
     completion_tokens: number
     total_tokens: number
-  },
-  model: string = 'unknown'
+  }
 ) {
   const supabase = await createClient()
 
@@ -50,7 +48,6 @@ export async function recordTokenUsage(
     prompt_tokens: usage.prompt_tokens,
     completion_tokens: usage.completion_tokens,
     total_tokens: usage.total_tokens,
-    model,
   })
 
   if (error) {

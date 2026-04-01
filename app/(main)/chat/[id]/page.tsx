@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bubble, Sender, Actions, type BubbleListProps } from '@ant-design/x'
-import { Avatar, Spin, message } from 'antd'
+import { Avatar, Spin, message, Divider } from 'antd'
 import { UserOutlined, RobotOutlined } from '@ant-design/icons'
 import { ChatHeader } from '@/components/chat/ChatHeader'
 import { MarkdownContent } from '@/components/chat/MarkdownContent'
@@ -28,6 +28,11 @@ interface BubbleItem {
   styles?: {
     content?: React.CSSProperties
   }
+  sources?: {
+    index: number
+    fileName?: string
+    page?: number
+  }[]
 }
 
 export default function ChatDetailPage({ params }: ChatDetailPageProps) {
@@ -50,6 +55,7 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
   const [localMessages, setLocalMessages] = useState<BubbleItem[]>([])
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [completedMessageId, setCompletedMessageId] = useState<string | null>(null)
+  const [streamingSources, setStreamingSources] = useState<{ index: number; fileName?: string; page?: number }[] | null>(null)
 
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(chatId)
   const { sendMessage: sendStreamingMessage, isPending } = useSendMessage()
@@ -113,6 +119,7 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
         .map((msg) => {
           const role = msg.role === 'user' ? 'user' as const : 'ai' as const
           const isError = msg.content?.startsWith('⚠️')
+          const sources = (msg.metadata as any)?.sources as { index: number; fileName?: string; page?: number }[] | undefined
 
           return {
             key: msg.id || getKey(),
@@ -124,6 +131,7 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
                 ? { backgroundColor: '#fff2f0', border: '1px solid #ffccc7' }
                 : undefined,
             },
+            sources, // 🎯 附加 sources 到消息项
           }
         })
 
@@ -165,7 +173,30 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
     ai: {
       typing: true,
       avatar: () => <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#1890ff' }} />,
-      contentRender: (content) => <MarkdownContent content={content} streaming={isLoading} />,
+      contentRender: (content, item) => {
+        const sources = (item as BubbleItem)?.sources
+        const contentString = typeof content === 'string' ? content : String(content)
+
+        return (
+          <div>
+            <MarkdownContent content={contentString} streaming={isLoading} />
+            {sources && sources.length > 0 && (
+              <>
+                <Divider style={{ margin: '12px 0' }} />
+                <div style={{ fontSize: '12px', color: '#666' }}>
+                  <div style={{ marginBottom: '8px', fontWeight: 500 }}>📄 引用来源：</div>
+                  {sources.map(s => (
+                    <div key={s.index} style={{ marginBottom: '4px' }}>
+                      [{s.index}] {s.fileName || '未知文件'}
+                      {s.page ? ` 第${s.page}页` : ''}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )
+      },
       // 🎯 添加复制按钮（使用 Actions.Copy 组件）
       footer: (content) => (
         <Actions items={actionItems(content)} onClick={() => console.log(content)} />
@@ -234,6 +265,11 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
             )
           }
 
+          // 🎯 保存 sources
+          if (chunk.sources && chunk.sources.length > 0) {
+            setStreamingSources(chunk.sources)
+          }
+
           if (chunk.done && chunk.usage) {
             setUsage(chunk.usage)
           }
@@ -242,10 +278,22 @@ export default function ChatDetailPage({ params }: ChatDetailPageProps) {
             setStreamingMessageId(null)
             // 🎯 标记为已完成，防止数据库同步覆盖
             setCompletedMessageId(loadingMessage.key)
-            
+
+            // 🎯 更新 sources 到本地消息
+            if (chunk.sources && chunk.sources.length > 0) {
+              setLocalMessages(prev =>
+                prev.map(msg =>
+                  msg.key === loadingMessage.key
+                    ? { ...msg, sources: chunk.sources }
+                    : msg
+                )
+              )
+            }
+
             console.log('[chat] Stream completed, message key:', loadingMessage.key)
             console.log('[chat] Set completedMessageId to prevent DB override')
-            
+            console.log('[chat] Sources:', chunk.sources)
+
             // 🎯 延迟清除完成标记，让数据库有时间同步（延长到 10 秒）
             setTimeout(() => {
               console.log('[chat] Clearing completedMessageId')

@@ -1,9 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
-import { askQuestion } from '@/lib/rag'
-import { getUserPlan } from '@/lib/quota'
+import { askQuestion, type CitationSource } from '@/lib/rag'
 import { recordTokenUsage } from '@/lib/token-manager'
 import { buildMessagesWithSummary, checkAndUpdateSummary } from '@/lib/chat-summary'
-import type { Message } from '@/lib/supabase/types'
 
 // 节流间隔（毫秒）- 避免频繁更新数据库
 const THROTTLE_INTERVAL = 500
@@ -82,16 +80,16 @@ export async function POST(req: Request) {
       )
     }
 
-    if (!(quotaResult as any)?.ok) {
-      const result = quotaResult as any
+    if (!(quotaResult as { ok?: boolean })?.ok) {
+      const result = quotaResult as Record<string, unknown>
       return new Response(
         JSON.stringify({
-          error: result.message || '今日额度已用完',
+          error: (result.message as string) || '今日额度已用完',
           code: 'QUOTA_EXCEEDED',
           details: {
-            type: result.error_type || 'requests',
-            current: result.current ?? 0,
-            limit: result.limit ?? 0,
+            type: (result.error_type as string) || 'requests',
+            current: (result.current as number) ?? 0,
+            limit: (result.limit as number) ?? 0,
             resetTime: new Date().toISOString().split('T')[0],
           },
         }),
@@ -110,6 +108,7 @@ export async function POST(req: Request) {
         let accumulatedContent = ''
         let lastUpdateTime = Date.now()
         let finalUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null
+        let ragSources: CitationSource[] | undefined
 
         try {
           if (!chat.knowledge_base_id) {
@@ -198,7 +197,7 @@ export async function POST(req: Request) {
                     if (parsed.usage) {
                       finalUsage = parsed.usage
                     }
-                  } catch (e) {
+                  } catch {
                     // 忽略解析错误
                   }
                 }
@@ -222,7 +221,38 @@ export async function POST(req: Request) {
             }
 
             const answer = ragResponse.answer
+            ragSources = ragResponse.sources
             finalUsage = ragResponse.usage || null
+
+            console.log('[chat-stream] RAG sources:', ragSources)
+
+            // 🎯 写入 message_sources 表（用于后续追溯）
+            if (ragSources && ragSources.length > 0) {
+              try {
+                const sourcesToInsert = ragSources
+                  .filter((s): s is typeof s & { chunkId: string } => !!s.chunkId)
+                  .map(s => ({
+                    message_id: messageId,
+                    chunk_id: s.chunkId,
+                    score: s.score ?? null,
+                  }))
+
+                console.log('[chat-stream] Sources to insert:', sourcesToInsert)
+
+                if (sourcesToInsert.length > 0) {
+                  const insertResult = await supabase
+                    .from('message_sources')
+                    .insert(sourcesToInsert)
+                  console.log('[chat-stream] message_sources insert result:', insertResult)
+                  console.log('[chat-stream] message_sources inserted:', sourcesToInsert.length)
+                }
+              } catch (error) {
+                console.error('[chat-stream] Failed to insert message_sources:', error)
+                // 不阻塞主流程，继续执行
+              }
+            } else {
+              console.log('[chat-stream] No sources to insert')
+            }
 
             // 模拟流式效果
             const chunkSize = 50
@@ -262,8 +292,7 @@ export async function POST(req: Request) {
             await recordTokenUsage(
               user.id,
               chatId,
-              finalUsage,
-              chat.knowledge_base_id ? 'qwen-plus' : 'deepseek-chat'
+              finalUsage
             )
 
             // 更新 user_usage
@@ -285,20 +314,22 @@ export async function POST(req: Request) {
               daily_requests: usageData?.daily_requests ?? 0,
             }
 
-            // 发送完成信号（包含 usage）
+            // 🎯 发送完成信号（包含 usage 和 sources）
             controller.enqueue(
               encoder.encode(JSON.stringify({
                 done: true,
                 content: accumulatedContent,
                 usage: usageInfo,
+                sources: ragSources,
               }) + '\n')
             )
           } else {
-            // 没有 usage，只发送完成信号
+            // 没有 usage，只发送完成信号（但也可能包含 sources）
             controller.enqueue(
               encoder.encode(JSON.stringify({
                 done: true,
                 content: accumulatedContent,
+                sources: ragSources,
               }) + '\n')
             )
           }

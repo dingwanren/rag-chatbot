@@ -15,16 +15,16 @@ export async function embedText(text: string): Promise<number[]> {
     const response = await openai.embeddings.create({
       model: 'text-embedding-v4',
       input: text,
-      dimensions: 1024,
+      dimensions: 1024, // ⭐ 指定 1024 维
     })
 
     const embedding = response.data[0].embedding
 
-    console.log('embedding length:', embedding.length)
+    console.log('[embedText] embedding length:', embedding.length)
 
     return embedding
   } catch (error) {
-    console.error('embedText error:', error)
+    console.error('[embedText] Error:', error)
     throw new Error(`生成 embedding 失败：${error instanceof Error ? error.message : '未知错误'}`)
   }
 }

@@ -13,6 +13,7 @@ import type { UploadProps, TableProps } from 'antd'
 import { KnowledgeFile } from '@/types'
 import { RetrievalSettings } from './RetrievalSettings'
 import { FileCard } from './FileCard'
+import { TestDataFlowPanel } from './TestDataFlowPanel'
 import { uploadKnowledgeFile, deleteKnowledgeFile, getFiles } from '@/app/actions/knowledge-file'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -54,6 +55,7 @@ export function KnowledgeDetailView({
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'files' | 'settings'>('files')
   const [uploading, setUploading] = useState(false)
+  const [showTestPanel, setShowTestPanel] = useState(false)
 
   // Load files from server
   useEffect(() => {
@@ -100,7 +102,9 @@ export function KnowledgeDetailView({
   // 🥇 Step 1: 轮询机制兜底（修复依赖问题）
   // ============================================
   useEffect(() => {
-    const hasProcessingFile = files.some(f => f.status === 'processing' || f.status === 'pending')
+    const hasProcessingFile = files.some(f => 
+      f.status === 'processing' || f.status === 'pending'
+    )
 
     if (!hasProcessingFile) {
       return
@@ -116,6 +120,7 @@ export function KnowledgeDetailView({
               return prevFiles.map(prevFile => {
                 const newFile = data.find(f => f.id === prevFile.id)
                 if (newFile && newFile.status !== prevFile.status) {
+                  console.log('[Poll] File status changed:', prevFile.id, prevFile.status, '->', newFile.status)
                   return { ...prevFile, status: newFile.status }
                 }
                 return prevFile
@@ -334,7 +339,7 @@ export function KnowledgeDetailView({
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
+      <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
         <Flex justify="space-between" align="center" wrap="wrap" gap="middle">
           <div>
             <Title level={4} className="!mb-2">{knowledgeBaseName}</Title>
@@ -355,8 +360,27 @@ export function KnowledgeDetailView({
         </Flex>
       </div>
 
+      {/* 🔍 数据链路测试面板 */}
+      <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+        <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+          <Text strong>🔍 数据链路测试</Text>
+          <Button
+            size="small"
+            type={showTestPanel ? 'primary' : 'default'}
+            onClick={() => setShowTestPanel(!showTestPanel)}
+          >
+            {showTestPanel ? '收起' : '展开'}
+          </Button>
+        </Flex>
+        {showTestPanel && (
+          <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+            <TestDataFlowPanel />
+          </div>
+        )}
+      </div>
+
       {/* Tabs */}
-      <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
+      <div className="px-6 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
         <Flex gap="large">
           <button
             onClick={() => setActiveTab('files')}
@@ -382,7 +406,7 @@ export function KnowledgeDetailView({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {activeTab === 'files' ? (
           <>
             {/* Desktop Table */}
@@ -401,7 +425,7 @@ export function KnowledgeDetailView({
                     showSizeChanger: true,
                     showTotal: (total) => `共 ${total} 条`,
                   }}
-                  scroll={{ y: 'calc(100vh - 300px)' }}
+                  scroll={{ y: 'calc(100vh - 400px)' }}
                 />
               )}
             </div>

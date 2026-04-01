@@ -155,11 +155,17 @@ export async function uploadKnowledgeFile(
           .eq('id', insertedFile.id)
       })
       .catch((processError) => {
-        console.error('File processing error:', processError)
+        console.error('=== File processing error ===:', processError)
+        console.error('=== File ID:', insertedFile.id, '===')
         // 处理失败，更新状态为 failed
         return supabase
           .from('knowledge_files')
-          .update({ status: 'failed' })
+          .update({ 
+            status: 'failed',
+            metadata: {
+              error: processError instanceof Error ? processError.message : 'Unknown error'
+            }
+          })
           .eq('id', insertedFile.id)
       })
 

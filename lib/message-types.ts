@@ -3,12 +3,21 @@
  */
 
 /**
+ * 引用来源（前端展示用）
+ */
+export interface MessageSource {
+  index: number
+  fileName?: string
+  page?: number
+}
+
+/**
  * 消息状态
  */
 export type MessageStatus = 'loading' | 'success' | 'error'
 
 /**
- * 扩展消息类型（包含状态）
+ * 扩展消息类型（包含状态和引用来源）
  */
 export interface ChatMessage {
   id: string
@@ -16,7 +25,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   status: MessageStatus
-  metadata?: any
+  sources?: MessageSource[]
+  metadata?: unknown
   created_at: string
 }
 

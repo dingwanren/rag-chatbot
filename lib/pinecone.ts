@@ -55,44 +55,49 @@ export async function searchSimilarChunks(
   threshold: number = 0.65
 ) {
   try {
-    console.log('query:', query)
-    console.log('knowledgeBaseId:', knowledgeBaseId)
-    console.log('userId:', userId)
-    console.log('topK:', topK)
-    console.log('threshold:', threshold)
+    console.log('[searchSimilarChunks] === Starting Search ===')
+    console.log('[searchSimilarChunks] query:', query)
+    console.log('[searchSimilarChunks] knowledgeBaseId:', knowledgeBaseId)
+    console.log('[searchSimilarChunks] userId:', userId)
+    console.log('[searchSimilarChunks] topK:', topK)
+    console.log('[searchSimilarChunks] threshold:', threshold)
 
     // 1. 对 query 做 embedding
     const queryEmbedding = await embedText(query)
+    console.log('[searchSimilarChunks] queryEmbedding length:', queryEmbedding.length)
 
-    // 2. 调用 Pinecone query（带双重过滤：knowledgeBaseId + userId）
+    // 2. 调用 Pinecone query（带双重过滤：knowledge_base_id + user_id）
     const index = pinecone.index('rag-chatbot')
     const result = await index.query({
       vector: queryEmbedding,
       topK: topK,
       includeMetadata: true,
       filter: {
-        knowledgeBaseId: { $eq: knowledgeBaseId },
-        userId: { $eq: userId },
+        knowledge_base_id: { $eq: knowledgeBaseId },  // ⭐ 使用下划线命名
+        user_id: { $eq: userId },  // ⭐ 使用下划线命名
       },
     })
 
     // 3. 提取结果并根据 threshold 过滤
     const matches = result.matches || []
-    console.log('matches before threshold filter:', matches.length)
+    console.log('[searchSimilarChunks] matches before threshold filter:', matches.length)
+    console.log('[searchSimilarChunks] matches:', matches.map(m => ({ id: m.id, score: m.score })))
 
     // 4. 根据相似度阈值过滤（score 可能为 undefined，需要过滤）
     const filteredMatches = matches.filter(match => match.score !== undefined && match.score >= threshold)
-    console.log('matches after threshold filter:', filteredMatches.length)
+    console.log('[searchSimilarChunks] matches after threshold filter:', filteredMatches.length)
+    console.log('[searchSimilarChunks] filteredMatches:', filteredMatches.map(m => ({ id: m.id, score: m.score })))
 
     return filteredMatches.map((match) => ({
       content: (match.metadata?.content as string) || '',
       score: match.score || 0,
-      fileId: (match.metadata?.fileId as string) || '',
-      chunkIndex: (match.metadata?.chunkIndex as number) || 0,
-      fileName: (match.metadata?.fileName as string) || '',
+      fileId: (match.metadata?.file_id as string) || '',  // ⭐ 使用下划线命名
+      chunkIndex: (match.metadata?.chunk_index as number) || 0,
+      fileName: (match.metadata?.file_name as string) || '',
+      pineconeId: match.id, // 🎯 返回 Pinecone ID（= knowledge_chunks.id）
     }))
   } catch (error) {
-    console.error('searchSimilarChunks error:', error)
+    console.error('[searchSimilarChunks] Error:', error)
     throw new Error(`检索失败：${error instanceof Error ? error.message : '未知错误'}`)
   }
 }

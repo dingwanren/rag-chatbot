@@ -6,12 +6,12 @@ import type { KnowledgeBase as DbKnowledgeBase } from '@/lib/supabase/types'
 import type { KnowledgeBase } from '@/types'
 
 async function toKnowledgeBase(db: DbKnowledgeBase, supabase: any): Promise<KnowledgeBase> {
-  // 获取该知识库下的文件数量
+  // 获取该知识库下的文件数量（status 为 completed）
   const { count } = await supabase
     .from('knowledge_files')
     .select('*', { count: 'exact', head: true })
     .eq('knowledge_base_id', db.id)
-    .eq('status', 'processed')
+    .eq('status', 'completed')
 
   return {
     id: db.id,

@@ -220,7 +220,7 @@ export async function sendMessage(chatId: string, content: string) {
         role: 'assistant' as const,
         content: '正在思考...', // 🎯 显示 loading 文本
         status: 'streaming' as const,
-        metadata: { loading: true } as any, // 标记为 loading 状态
+        metadata: { loading: true } satisfies unknown, // 标记为 loading 状态
         seq: nextSeq + 1,
       },
     ])
@@ -268,11 +268,13 @@ export async function deleteMessage(messageId: string) {
  * @param messageId - 消息 ID
  * @param content - 消息内容
  * @param status - 消息状态（'streaming' 或 'completed'）
+ * @param sources - 引用来源（可选）
  */
 export async function updateMessage(
   messageId: string,
   content: string,
-  status: 'streaming' | 'completed' = 'streaming'
+  status: 'streaming' | 'completed' = 'streaming',
+  sources?: { index: number; fileName?: string; page?: number }[]
 ) {
   const supabase = await createClient()
 
@@ -283,10 +285,13 @@ export async function updateMessage(
 
   const { error } = await supabase
     .from('messages')
-    .update({ 
-      content, 
+    .update({
+      content,
       status,
-      metadata: { loading: false } as any, // 移除 loading 标记
+      metadata: {
+        loading: false,
+        sources: sources || undefined,
+      } satisfies unknown, // 移除 loading 标记，添加 sources
     })
     .eq('id', messageId)
 

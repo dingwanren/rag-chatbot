@@ -3,6 +3,8 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { searchSimilarChunks } from './pinecone'
 import { estimateTokens } from './token-manager'
 import { getRagConfig } from './rag-config'
+import { createClient } from './supabase/server'
+import type { KnowledgeChunk } from './supabase/types'
 
 const openai = new OpenAI({
   baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -10,10 +12,22 @@ const openai = new OpenAI({
 })
 
 /**
- * RAG 问答返回结果（包含 token 信息）
+ * 引用来源（前端展示用）
+ */
+export interface CitationSource {
+  index: number
+  fileName?: string
+  page?: number
+  chunkId?: string
+  score?: number
+}
+
+/**
+ * RAG 问答返回结果（包含 token 信息和引用来源）
  */
 export interface RAGResponse {
   answer: string
+  sources?: CitationSource[]
   usage?: {
     prompt_tokens: number
     completion_tokens: number
@@ -108,7 +122,47 @@ export async function askQuestion(
       }
     }
 
-    // 2. 拼接上下文（最多取前 3 条，防止 token 爆炸）
+    // 2. 🎯 查询 knowledge_chunks 获取完整信息（包括 metadata）
+    // ⭐ 关键：pineconeId 现在就是 knowledge_chunks.id
+    const pineconeIds = matches.map(m => m.pineconeId)
+    const supabase = await createClient()
+    
+    console.log('[askQuestion] Querying knowledge_chunks with IDs:', pineconeIds)
+    
+    const { data: chunks, error: chunksError } = await supabase
+      .from('knowledge_chunks')
+      .select('*')
+      .in('id', pineconeIds)
+
+    if (chunksError) {
+      console.error('[askQuestion] Failed to query chunks:', chunksError)
+    }
+
+    console.log('[askQuestion] Queried chunks:', chunks?.length ?? 0)
+    console.log('[askQuestion] Chunks:', chunks)
+
+    // 3. 建立 pineconeId -> chunk 映射
+    const chunkMap = new Map<string, KnowledgeChunk>(
+      chunks?.map(c => [c.id, c]) ?? []
+    )
+
+    // 4. 构建 sources（前端展示用）
+    const sources: CitationSource[] = matches.map((m, index) => {
+      const chunk = chunkMap.get(m.pineconeId)
+      const metadata = chunk?.metadata as Record<string, unknown> ?? {}
+      
+      return {
+        index: index + 1,
+        fileName: (metadata.file_name as string) ?? m.fileName ?? '未知文件',
+        page: metadata.page as number | undefined,
+        chunkId: chunk?.id,
+        score: m.score,
+      }
+    })
+
+    console.log('[askQuestion] Built sources:', sources)
+
+    // 5. 拼接上下文（最多取前 3 条，防止 token 爆炸）
     const topMatches = matches.slice(0, 3)
     const context = topMatches
       .map((m, i) => `【${i + 1}】${m.content}`)
@@ -171,6 +225,7 @@ export async function askQuestion(
 
     return {
       answer,
+      sources,
       usage,
     }
   } catch (error) {

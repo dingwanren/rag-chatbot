@@ -128,6 +128,7 @@ export interface Database {
           file_size: number
           status: string
           created_at: string
+          file_path?: string | null
         }
         Insert: {
           id?: string
@@ -137,6 +138,7 @@ export interface Database {
           file_size: number
           status?: string
           created_at?: string
+          file_path?: string | null
         }
         Update: {
           id?: string
@@ -146,12 +148,87 @@ export interface Database {
           file_size?: number
           status?: string
           created_at?: string
+          file_path?: string | null
         }
         Relationships: [
           {
             foreignKeyName: 'knowledge_files_knowledge_base_id_fkey'
             columns: ['knowledge_base_id']
             referencedRelation: 'knowledge_bases'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      knowledge_chunks: {
+        Row: {
+          id: string
+          file_id: string
+          chunk_index: number
+          content: string
+          pinecone_vector_id: string | null
+          metadata: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          file_id: string
+          chunk_index: number
+          content: string
+          pinecone_vector_id?: string | null
+          metadata?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          file_id?: string
+          chunk_index?: number
+          content?: string
+          pinecone_vector_id?: string | null
+          metadata?: Json | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'knowledge_chunks_file_id_fkey'
+            columns: ['file_id']
+            referencedRelation: 'knowledge_files'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      message_sources: {
+        Row: {
+          id: string
+          message_id: string
+          chunk_id: string
+          score: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          message_id: string
+          chunk_id: string
+          score?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          message_id?: string
+          chunk_id?: string
+          score?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'message_sources_message_id_fkey'
+            columns: ['message_id']
+            referencedRelation: 'messages'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'message_sources_chunk_id_fkey'
+            columns: ['chunk_id']
+            referencedRelation: 'knowledge_chunks'
             referencedColumns: ['id']
           }
         ]
@@ -472,6 +549,15 @@ export type MessageUpdate = Database['public']['Tables']['messages']['Update']
 export type KnowledgeBase = Database['public']['Tables']['knowledge_bases']['Row']
 export type KnowledgeBaseInsert = Database['public']['Tables']['knowledge_bases']['Insert']
 export type KnowledgeBaseUpdate = Database['public']['Tables']['knowledge_bases']['Update']
+export type KnowledgeFile = Database['public']['Tables']['knowledge_files']['Row']
+export type KnowledgeFileInsert = Database['public']['Tables']['knowledge_files']['Insert']
+export type KnowledgeFileUpdate = Database['public']['Tables']['knowledge_files']['Update']
+export type KnowledgeChunk = Database['public']['Tables']['knowledge_chunks']['Row']
+export type KnowledgeChunkInsert = Database['public']['Tables']['knowledge_chunks']['Insert']
+export type KnowledgeChunkUpdate = Database['public']['Tables']['knowledge_chunks']['Update']
+export type MessageSource = Database['public']['Tables']['message_sources']['Row']
+export type MessageSourceInsert = Database['public']['Tables']['message_sources']['Insert']
+export type MessageSourceUpdate = Database['public']['Tables']['message_sources']['Update']
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type ProfileInsert = Database['public']['Tables']['profiles']['Insert']
 export type ProfileUpdate = Database['public']['Tables']['profiles']['Update']

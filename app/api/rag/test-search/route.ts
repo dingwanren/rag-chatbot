@@ -71,9 +71,17 @@ export async function POST(request: NextRequest) {
       topK: config.top_k,
       includeMetadata: true,
       filter: {
-        knowledgeBaseId: { $eq: knowledgeBaseId },
+        knowledge_base_id: { $eq: knowledgeBaseId },  // ⭐ 使用下划线命名
+        user_id: { $eq: user.id },  // ⭐ 添加 user_id 过滤
       },
     })
+
+    console.log('[test-search] Pinecone query result:', result.matches?.length ?? 0, 'matches')
+    console.log('[test-search] Matches:', result.matches?.map(m => ({ 
+      id: m.id, 
+      score: m.score, 
+      metadata: m.metadata 
+    })))
 
     // 根据 threshold 过滤
     const allMatches = result.matches || []
@@ -82,9 +90,9 @@ export async function POST(request: NextRequest) {
       .map(match => ({
         content: (match.metadata?.content as string) || '',
         score: match.score || 0,
-        fileId: (match.metadata?.fileId as string) || '',
-        chunkIndex: (match.metadata?.chunkIndex as number) || 0,
-        fileName: (match.metadata?.fileName as string) || '',
+        fileId: (match.metadata?.file_id as string) || '',  // ⭐ 使用下划线命名
+        chunkIndex: (match.metadata?.chunk_index as number) || 0,
+        fileName: (match.metadata?.file_name as string) || '',
       }))
 
     return NextResponse.json({

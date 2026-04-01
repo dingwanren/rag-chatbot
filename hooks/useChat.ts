@@ -8,7 +8,6 @@ import {
   getChatList,
   deleteChat,
   renameChat,
-  deleteMessage,
   updateMessage,
 } from '@/app/actions/chat'
 import { getKnowledgeBases } from '@/app/actions/knowledge-base'
@@ -20,14 +19,14 @@ import type { Chat, Message } from '@/lib/supabase/types'
 function parseApiError(errorText: string): {
   message: string
   code?: string
-  details?: any
+  details?: unknown
 } {
   try {
     const err = JSON.parse(errorText)
     return {
-      message: err.message || '请求失败',
-      code: err.code,
-      details: err.details,
+      message: (err as Record<string, unknown>).message as string || '请求失败',
+      code: (err as Record<string, unknown>).code as string | undefined,
+      details: (err as Record<string, unknown>).details as unknown,
     }
   } catch {
     return {
@@ -39,7 +38,7 @@ function parseApiError(errorText: string): {
 /**
  * 生成友好的错误消息内容
  */
-function formatErrorMessage(code?: string, message?: string, details?: any): string {
+function formatErrorMessage(code?: string, message?: string, details?: Record<string, unknown>): string {
   if (code === 'QUOTA_EXCEEDED') {
     const detailText = details ? `（当前：${details.current}/${details.limit}）` : ''
     return `⚠️ 今日额度已用完${detailText}\n\n${message || '请明天再试或升级账户计划'}`
@@ -137,14 +136,14 @@ export function useSendMessage() {
           const errorText = await response.text()
           const { message, code, details } = parseApiError(errorText)
 
-          const errorMessage = formatErrorMessage(code, message, details)
+          const errorMessage = formatErrorMessage(code, message, details as Record<string, unknown> | undefined)
           await updateMessage(assistantMessageId, errorMessage, 'completed')
 
           if (response.status >= 500) {
             console.error('[API Error]', response.status, message, { code, details })
           }
 
-          const error = new Error(message) as any
+          const error = new Error(message) as Error & { code?: string; status?: number; details?: unknown }
           error.code = code
           error.status = response.status
           error.details = details
@@ -162,7 +161,6 @@ export function useSendMessage() {
           assistantMessageId,
           stream: async function* () {
             let accumulatedContent = ''
-            let lastUsage: { daily_tokens: number; daily_requests: number } | undefined
 
             while (true) {
               const { done, value } = await reader.read()
@@ -174,16 +172,16 @@ export function useSendMessage() {
               for (const line of lines) {
                 try {
                   const data = JSON.parse(line)
-                  
+
                   if (data.done) {
-                    // 流完成：更新数据库为 completed 状态
-                    await updateMessage(assistantMessageId, data.content, 'completed')
-                    
-                    lastUsage = data.usage
+                    // 流完成：更新数据库为 completed 状态（包含 sources）
+                    await updateMessage(assistantMessageId, data.content, 'completed', data.sources)
+
                     yield {
                       done: true,
                       content: data.content,
                       usage: data.usage,
+                      sources: data.sources,
                     }
                   } else if (data.error) {
                     const errorMsg = formatErrorMessage(undefined, data.error, undefined)
@@ -196,14 +194,14 @@ export function useSendMessage() {
                   } else {
                     // 🎯 流式更新：只更新本地状态，不更新数据库（避免频繁 IO）
                     accumulatedContent = data.content
-                    yield { 
-                      chunk: data.chunk, 
+                    yield {
+                      chunk: data.chunk,
                       content: accumulatedContent,
                       // 🎯 返回当前内容，让前端实时更新
                       streamingContent: accumulatedContent,
                     }
                   }
-                } catch (e) {
+                } catch {
                   // 忽略解析错误
                 }
               }

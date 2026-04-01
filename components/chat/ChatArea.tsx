@@ -2,7 +2,7 @@
 
 import { Bubble, Sender, type BubbleListProps } from '@ant-design/x'
 import { useState, useMemo, useCallback, useSyncExternalStore } from 'react'
-import { Avatar, Spin } from 'antd'
+import { Avatar, Spin, Divider } from 'antd'
 import { UserOutlined, RobotOutlined } from '@ant-design/icons'
 import { ChatHeader } from './ChatHeader'
 import { MarkdownContent } from './MarkdownContent'
@@ -29,17 +29,30 @@ export function ChatArea({ chatId, chatTitle = 'New Chat' }: ChatAreaProps) {
 
   const isMounted = useSyncExternalStore(subscribeToMounted, () => true, () => false)
 
-  // 转换数据库消息为 Bubble.List 格式
+  // 🎯 转换数据库消息为 Bubble.List 格式（包含 sources）
   const bubbleItems = useMemo<BubbleListProps['items']>(() => {
-    return (dbMessages ?? []).map((message: Message) => {
+    const items = (dbMessages ?? []).map((message: Message) => {
       const role = message.role === 'user' ? 'user' : 'ai'
+      const sources = (message.metadata as { sources?: { index: number; fileName?: string; page?: number }[] })?.sources
+
+      console.log('[ChatArea] Message:', {
+        id: message.id,
+        role: message.role,
+        content: message.content?.slice(0, 50),
+        metadata: message.metadata,
+        sources,
+      })
+
       return {
         key: message.id || getKey(),
         role,
         content: message.content,
         placement: role === 'user' ? ('end' as const) : ('start' as const),
+        sources, // 🎯 附加 sources 到 bubble item
       }
     })
+    console.log('[ChatArea] Bubble items:', items.length)
+    return items
   }, [dbMessages])
 
   const isLoading = isPending || isLoadingMessages
@@ -48,7 +61,30 @@ export function ChatArea({ chatId, chatTitle = 'New Chat' }: ChatAreaProps) {
     ai: {
       typing: true,
       avatar: () => <Avatar icon={<RobotOutlined />} style={{ backgroundColor: '#1890ff' }} />,
-      contentRender: (content) => <MarkdownContent content={content} streaming={isLoading} />,
+      contentRender: (content, item) => {
+        const sources = (item as { sources?: { index: number; fileName?: string; page?: number }[] })?.sources
+        const contentString = typeof content === 'string' ? content : String(content)
+        
+        return (
+          <div>
+            <MarkdownContent content={contentString} streaming={isLoading} />
+            {sources && sources.length > 0 && (
+              <>
+                <Divider style={{ margin: '12px 0' }} />
+                <div style={{ fontSize: '12px', color: '#666' }}>
+                  <div style={{ marginBottom: '8px', fontWeight: 500 }}>📄 引用来源：</div>
+                  {sources.map(s => (
+                    <div key={s.index} style={{ marginBottom: '4px' }}>
+                      [{s.index}] {s.fileName || '未知文件'}
+                      {s.page ? ` 第${s.page}页` : ''}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )
+      },
     },
     user: {
       placement: 'end',
